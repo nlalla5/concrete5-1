@@ -3,7 +3,7 @@ namespace Concrete\Core\Permission\Assignment;
 
 use Concrete\Core\Permission\Access\Access;
 use Concrete\Core\Block\Block;
-use Area;
+use Concrete\Core\Area\Area;
 use Concrete\Core\Area\SubArea;
 use Concrete\Core\Permission\Inheritance\Registry\RegistryInterface;
 use PermissionKey;
@@ -111,12 +111,17 @@ class BlockAssignment extends Assignment
         $pa->markAsInUse();
     }
 
-    public function getPermissionKeyToolsURL($task = false)
+    /**
+     * {@inheritdoc}
+     *
+     * @see \Concrete\Core\Permission\Assignment\Assignment::getPermissionKeyTaskURL()
+     */
+    public function getPermissionKeyTaskURL(string $task = '', array $options = []): string
     {
         $b = $this->getPermissionObject();
         $c = $b->getBlockCollectionObject();
         $arHandle = $b->getAreaHandle();
 
-        return parent::getPermissionKeyToolsURL($task) . '&cID=' . $c->getCollectionID() . '&cvID=' . $c->getVersionID() . '&bID=' . $b->getBlockID() . '&arHandle=' . urlencode($arHandle);
+        return parent::getPermissionKeyTaskURL($task, $options + ['cID' => $c->getCollectionID(), 'cvID' => $c->getVersionID(), 'bID' => $b->getBlockID(), 'arHandle' => $arHandle]);
     }
 }

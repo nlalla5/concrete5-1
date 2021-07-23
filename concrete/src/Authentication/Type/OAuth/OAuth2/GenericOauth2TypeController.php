@@ -24,7 +24,7 @@ abstract class GenericOauth2TypeController extends GenericOauthTypeController
 
     public function handle_authentication_callback()
     {
-        $user = new User();
+        $user = $this->app->make(User::class);
         if ($user && !$user->isError() && $user->isLoggedIn()) {
             $this->handle_attach_callback();
         }
@@ -52,7 +52,7 @@ abstract class GenericOauth2TypeController extends GenericOauthTypeController
             } catch (Exception $e) {
                 $this->showError($e->getMessage());
             } catch (\Exception $e) {
-                \Log::addError($e->getMessage(), array($e));
+                $this->logger->error($e->getMessage(), ['exception' => $e]);
                 $this->showError(t('An unexpected error occurred.'));
             }
         } else {
@@ -71,8 +71,8 @@ abstract class GenericOauth2TypeController extends GenericOauthTypeController
 
     public function handle_attach_callback()
     {
-        $user = new User();
-        if (!$user->isLoggedIn()) {
+        $user = $this->app->make(User::class);
+        if (!$user->isRegistered()) {
             id(new RedirectResponse(\URL::to('')))->send();
             exit;
         }
@@ -84,6 +84,7 @@ abstract class GenericOauth2TypeController extends GenericOauthTypeController
             $this->showError(t('Failed authentication: %s', $e->getMessage()));
             exit;
         }
+
         if ($token) {
             if ($this->bindUser($user, $this->getExtractor(true)->getUniqueId())) {
                 $this->showSuccess(t('Successfully attached.'));

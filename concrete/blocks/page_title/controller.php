@@ -1,12 +1,14 @@
 <?php
 namespace Concrete\Block\PageTitle;
 
+use Concrete\Core\Feature\Features;
+use Concrete\Core\Feature\UsesFeatureInterface;
 use Page;
 use Concrete\Core\Block\BlockController;
 use Concrete\Core\Tree\Node\Type\Topic;
 use Core;
 
-class Controller extends BlockController
+class Controller extends BlockController implements UsesFeatureInterface
 {
     protected $btInterfaceWidth = 470;
     protected $btInterfaceHeight = 500;
@@ -48,6 +50,13 @@ class Controller extends BlockController
         }
 
         return $title;
+    }
+
+    public function getRequiredFeatures(): array
+    {
+        return [
+            Features::BASICS
+        ];
     }
 
     public function view()
@@ -147,5 +156,27 @@ class Controller extends BlockController
         }
 
         return $title;
+    }
+
+    public function isValidControllerTask($method, $parameters = [])
+    {
+        if (!$this->useFilterTitle) {
+            return false;
+        }
+
+        if ($method === 'action_date') {
+            // Parameter 0 must be set
+            if (!isset($parameters[0]) || $parameters[0] < 0 || $parameters[0] > 9999) {
+                return false;
+            }
+            // Parameter 1 can be null
+            if (isset($parameters[1])) {
+                if ($parameters[1] < 1 || $parameters[1] > 12) {
+                    return false;
+                }
+            }
+        }
+
+        return parent::isValidControllerTask($method, $parameters);
     }
 }

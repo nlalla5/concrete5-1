@@ -10,7 +10,7 @@ defined('C5_EXECUTE') or die('Access Denied.');
 
 if (!isset($mailRecipient)) {
     $mailRecipient = '';
-    $me = new User();
+    $me = Core::make(Concrete\Core\User\User::class);
     if ($me->isRegistered()) {
         $myInfo = Core::make(UserInfoRepository::class)->getByID($me->getUserID());
         if ($myInfo !== null) {
@@ -47,7 +47,7 @@ if (!isset($numEmails)) {
     ?>
     <div class="ccm-dashboard-form-actions-wrapper">
         <div class="ccm-dashboard-form-actions">
-            <a href="<?= URL::to('/dashboard/system/mail/method') ?>" class="btn btn-default pull-left"><?= t('Change Settings') ?></a>
+            <a href="<?= URL::to('/dashboard/system/mail/method') ?>" class="btn btn-secondary float-left"><?= t('Change Settings') ?></a>
             <?php
             if ($emailEnabled) {
                 echo $interface->submit(t('Send'), 'mail-settings-test-form', 'right', 'btn-primary');

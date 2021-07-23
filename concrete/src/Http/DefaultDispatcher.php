@@ -3,8 +3,11 @@
 namespace Concrete\Core\Http;
 
 use Concrete\Core\Application\Application;
-use Concrete\Core\Routing\DispatcherRouteCallback;
+use Concrete\Core\Error\UserMessageException;
+use Concrete\Core\Http\Middleware\DispatcherDelegate;
+use Concrete\Core\Http\Middleware\MiddlewareStack;
 use Concrete\Core\Routing\Redirect;
+use Concrete\Core\Routing\Router;
 use Concrete\Core\Routing\RouterInterface;
 use Concrete\Core\Session\SessionValidator;
 use Concrete\Core\User\User;
@@ -25,11 +28,11 @@ class DefaultDispatcher implements DispatcherInterface
     private $app;
 
     /**
-     * @var \Concrete\Core\Routing\RouterInterface
+     * @var \Concrete\Core\Routing\Router
      */
     private $router;
 
-    public function __construct(Application $app, RouterInterface $router)
+    public function __construct(Application $app, Router $router)
     {
         $this->app = $app;
         $this->router = $router;
@@ -46,7 +49,7 @@ class DefaultDispatcher implements DispatcherInterface
 
         if (substr($path, 0, 3) == '../' || substr($path, -3) == '/..' || strpos($path, '/../') ||
             substr($path, 0, 3) == '..\\' || substr($path, -3) == '\\..' || strpos($path, '\\..\\')) {
-            throw new \RuntimeException(t('Invalid path traversal. Please make this request with a valid HTTP client.'));
+            throw new UserMessageException(t('Invalid path traversal. Please make this request with a valid HTTP client.'));
         }
 
         $response = null;
@@ -79,7 +82,7 @@ class DefaultDispatcher implements DispatcherInterface
     private function validateUser()
     {
         // check to see if this is a valid user account
-        $user = new User();
+        $user = $this->app->make(User::class);
         if (!$user->checkLogin()) {
             $isActive = $user->isActive();
             $user->logout();
@@ -103,32 +106,30 @@ class DefaultDispatcher implements DispatcherInterface
 
     private function handleDispatch($request)
     {
-        $path = rtrim($request->getPathInfo(), '/') . '/';
-        $collection = $this->router->getList();
-        $collection = $this->filterRouteCollectionForPath($collection, $path);
-        if ($collection->count() === 0) {
-            $callDispatcher = true;
-        } else {
-            $context = new RequestContext();
-            $context->fromRequest($request);
-            $matcher = new UrlMatcher($collection, $context);
-            $callDispatcher = false;
-            try {
-                $matched = $matcher->match($path);
-                $request->attributes->add($matched);
-                $route = $collection->get($matched['_route']);
-                $this->router->setRequest($request);
-                $response = $this->router->execute($route, $matched);
-            } catch (ResourceNotFoundException $e) {
-                $callDispatcher = true;
-            } catch (MethodNotAllowedException $e) {
-                $callDispatcher = true;
+        try {
+            $route = $this->router->matchRoute($request)->getRoute();
+            $dispatcher = new RouteDispatcher($this->router, $route, []);
+            $stack = new MiddlewareStack(
+                new DispatcherDelegate($dispatcher)
+            );
+            $stack->setApplication($this->app);
+            foreach($route->getMiddlewares() as $middleware) {
+                if (is_string($middleware->getMiddleware())) {
+                    $inflatedMiddleware =  $this->app->make($middleware->getMiddleware());
+                } else {
+                    $inflatedMiddleware = $middleware->getMiddleware();
+                }
+                $stack = $stack->withMiddleware(
+                    $inflatedMiddleware,
+                    $middleware->getPriority()
+                );
             }
+            return $stack->process($request);
+        } catch (ResourceNotFoundException $e) {
+        } catch (MethodNotAllowedException $e) {
         }
-        if ($callDispatcher) {
-            $callback = $this->app->make(DispatcherRouteCallback::class, ['dispatcher']);
-            $response = $callback->execute($request);
-        }
+        $c = \Page::getFromRequest($request);
+        $response = $this->app->make(ResponseFactoryInterface::class)->collection($c);
 
         return $response;
     }

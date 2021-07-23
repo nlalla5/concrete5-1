@@ -10,12 +10,13 @@ use Core;
 use Doctrine\DBAL\Driver\PDOConnection;
 use Doctrine\ORM\EntityManagerInterface;
 use ORM;
-use PHPUnit_Extensions_Database_DataSet_CompositeDataSet;
+use PHPUnit\DbUnit\DataSet\CompositeDataSet;
+use PHPUnit\DbUnit\TestCase;
 use PHPUnit_Extensions_Database_TestCase;
 use RuntimeException;
 use SimpleXMLElement;
 
-abstract class ConcreteDatabaseTestCase extends PHPUnit_Extensions_Database_TestCase
+abstract class ConcreteDatabaseTestCase extends TestCase
 {
     /**
      * The cached database connection.
@@ -93,7 +94,7 @@ abstract class ConcreteDatabaseTestCase extends PHPUnit_Extensions_Database_Test
         parent::tearDownAfterClass();
     }
 
-    public function tearDown()
+    public function tearDown(): void
     {
         parent::tearDown();
         ORM::entityManager('core')->clear();
@@ -138,21 +139,31 @@ abstract class ConcreteDatabaseTestCase extends PHPUnit_Extensions_Database_Test
      */
     protected function getDataSet()
     {
-        $dataSet = new PHPUnit_Extensions_Database_DataSet_CompositeDataSet();
+        $dataSet = new CompositeDataSet();
         $this->importFixtures($dataSet);
 
         return $dataSet;
     }
 
     /**
-     * Import tables from $this->tables.
+     * Get the names of the tables to be imported from the xml files.
+     *
+     * @return string[]
+     */
+    protected function getTables()
+    {
+        return $this->tables;
+    }
+
+    /**
+     * Import tables from $this->getTables().
      */
     protected function importTables()
     {
         $connection = $this->connection();
 
         // Filter out any tables that have already been imported
-        $tables = array_filter($this->tables, function ($table) {
+        $tables = array_filter($this->getTables(), function ($table) {
             return !isset(static::$existingTables[$table]);
         });
 
@@ -270,9 +281,9 @@ abstract class ConcreteDatabaseTestCase extends PHPUnit_Extensions_Database_Test
     }
 
     /**
-     * @param PHPUnit_Extensions_Database_DataSet_CompositeDataSet $dataSet
+     * @param CompositeDataSet $dataSet
      */
-    protected function importFixtures(PHPUnit_Extensions_Database_DataSet_CompositeDataSet $dataSet)
+    protected function importFixtures(CompositeDataSet $dataSet)
     {
         $fixtures = $this->fixtures;
         if (!empty($fixtures)) {
@@ -282,6 +293,7 @@ abstract class ConcreteDatabaseTestCase extends PHPUnit_Extensions_Database_Test
             }
             $namespaceChunks = explode('\\', $testClass);
             $fixturePath = DIR_TESTS . '/assets/' . $namespaceChunks[2];
+
             foreach ((array) $fixtures as $fixture) {
                 $path = $fixturePath . "/$fixture.xml";
                 $ds = $this->createMySQLXMLDataSet($path);

@@ -2,9 +2,12 @@
 namespace Concrete\Block\Faq;
 
 use Concrete\Core\Block\BlockController;
+use Concrete\Core\Database\Connection\Connection;
 use Concrete\Core\Editor\LinkAbstractor;
+use Concrete\Core\Feature\Features;
+use Concrete\Core\Feature\UsesFeatureInterface;
 
-class Controller extends BlockController
+class Controller extends BlockController implements UsesFeatureInterface
 {
     protected $btInterfaceWidth = 600;
     protected $btInterfaceHeight = 465;
@@ -24,6 +27,13 @@ class Controller extends BlockController
     {
         return t('Frequently Asked Questions Block');
     }
+    
+    public function getRequiredFeatures(): array
+    {
+        return [
+            Features::FAQ,
+        ];
+    }
 
     public function getSearchableContent()
     {
@@ -42,7 +52,14 @@ class Controller extends BlockController
     public function edit()
     {
         $db = $this->app->make('database')->connection();
-        $query = $db->fetchAll('SELECT * FROM btFaqEntries WHERE bID = ? ORDER BY sortOrder', [$this->bID]);
+        $rows = $db->fetchAll('SELECT * FROM btFaqEntries WHERE bID = ? ORDER BY sortOrder', [$this->bID]);
+
+        $query = [];
+        foreach ($rows as $q) {
+            $q['description'] = LinkAbstractor::translateFromEditMode($q['description']);
+            $query[] = $q;
+        }
+
         $this->set('rows', $query);
     }
 
@@ -62,22 +79,15 @@ class Controller extends BlockController
 
     public function duplicate($newBID)
     {
-        $db = $this->app->make('database')->connection();
-        $v = [$this->bID];
-        $q = 'SELECT * FROM btFaqEntries WHERE bID = ?';
-        $r = $db->executeQuery($q, $v);
-        foreach ($r as $row) {
-            $db->executeQuery(
-                'INSERT INTO btFaqEntries (bID, title, linkTitle, description, sortOrder) VALUES(?,?,?,?,?)',
-                [
-                    $newBID,
-                    $row['title'],
-                    $row['linkTitle'],
-                    $row['description'],
-                    $row['sortOrder'],
-                ]
-            );
-        }
+        $db = $this->app->make(Connection::class);
+        $copyFields = 'title, linkTitle, description, sortOrder';
+        $db->executeUpdate(
+            "INSERT INTO btFaqEntries (bID, {$copyFields}) SELECT ?, {$copyFields} FROM btFaqEntries WHERE bID = ?",
+            [
+                $newBID,
+                $this->bID,
+            ]
+        );
     }
 
     public function delete()

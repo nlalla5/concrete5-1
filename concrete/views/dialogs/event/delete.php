@@ -8,7 +8,7 @@
             <?= t('Are you sure you want to delete this event? The entire event, all its data and all versions will be deleted.') ?>
         </div>
 
-        <h4><?=$event->getName()?></h4>
+        <h4><?= h($event->getName()) ?></h4>
         <?= $event->getDescription() ?>
 
         <hr/>
@@ -32,9 +32,9 @@
         <input type="hidden" name="eventID" value="<?=$event->getID()?>">
 
         <div class="dialog-buttons">
-            <button class="btn btn-default pull-left" data-dialog-action="cancel"><?= t('Cancel') ?></button>
+            <button class="btn btn-secondary float-left" data-dialog-action="cancel"><?= t('Cancel') ?></button>
             <button type="button" data-dialog-action="submit"
-                    class="btn btn-danger pull-right"><?= t('Delete') ?></button>
+                    class="btn btn-danger float-right"><?= t('Delete') ?></button>
         </div>
 
 

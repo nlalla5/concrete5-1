@@ -1,9 +1,10 @@
 <?php
 namespace Concrete\Core\Database;
 
+use Closure;
 use Doctrine\Common\Persistence\Mapping\MappingException;
 use Doctrine\DBAL\Schema\SchemaDiff;
-use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\EntityManagerInterface;
 use Core;
 use Doctrine\ORM\Tools\SchemaTool;
 
@@ -12,7 +13,7 @@ class DatabaseStructureManager
     /**
      * The entity manager instance.
      *
-     * @var \Doctrine\ORM\EntityManager
+     * @var \Doctrine\ORM\EntityManagerInterface
      */
     protected $entityManager;
 
@@ -26,9 +27,9 @@ class DatabaseStructureManager
     /**
      * Create a new structure manager.
      * 
-     * @param \Doctrine\ORM\EntityManager $em
+     * @param \Doctrine\ORM\EntityManagerInterface $em
      */
-    public function __construct(EntityManager $em)
+    public function __construct(EntityManagerInterface $em)
     {
         $this->entityManager = $em;
     }
@@ -36,7 +37,7 @@ class DatabaseStructureManager
     /**
      * Get the entity manager object for this structure manager.
      * 
-     * @return \Doctrine\ORM\EntityManager
+     * @return \Doctrine\ORM\EntityManagerInterface
      */
     public function getEntityManager()
     {
@@ -175,11 +176,12 @@ class DatabaseStructureManager
      * ones altered. Otherwise this will return false if there were no database
      * migrations needed.
      * 
-     * @param  array $metadatas
+     * @param array $metadatas
+     * @param \Closure|null $queryFilter a callback that receives a query being executed and may return FALSE to skip its execution 
      *
      * @return bool
      */
-    public function installDatabaseFor(array $metadatas)
+    public function installDatabaseFor(array $metadatas, Closure $queryFilter = null)
     {
         if (count($metadatas) > 0) {
             // We need to create the SchemaDiff manually here because we want
@@ -227,7 +229,9 @@ class DatabaseStructureManager
                 $platform = $conn->getDatabasePlatform();
                 $migrateSql = $schemaDiff->toSql($platform);
                 foreach ($migrateSql as $sql) {
-                    $conn->executeQuery($sql);
+                    if ($queryFilter === null || $queryFilter($sql) !== false) {
+                        $conn->executeQuery($sql);
+                    }
                 }
 
                 return true;

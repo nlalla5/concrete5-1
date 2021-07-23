@@ -5,13 +5,15 @@ use Concrete\Core\Application\ApplicationAwareInterface;
 use Concrete\Core\Application\ApplicationAwareTrait;
 use Concrete\Core\Config\Repository\Repository;
 use Concrete\Core\File\Service\File;
-use Concrete\Core\Legacy\TaskPermission;
 use Concrete\Core\Support\Facade\Application;
-use Concrete\Core\Url\Resolver\CanonicalUrlResolver;
 use Concrete\Core\Support\Facade\Package;
+
+use Concrete\Core\Legacy\TaskPermission;
+use Concrete\Core\Url\Resolver\CanonicalUrlResolver;
 use Concrete\Core\Url\Resolver\PathUrlResolver;
 use Zend\Http\Client\Adapter\Exception\TimeoutException;
 use Exception;
+use Concrete\Core\Http\Request;
 
 class Marketplace implements ApplicationAwareInterface
 {
@@ -40,6 +42,9 @@ class Marketplace implements ApplicationAwareInterface
     /** @var PathUrlResolver */
     protected $urlResolver;
 
+    /** @var \Concrete\Core\Http\Request */
+    protected $request;
+
     public function setApplication(\Concrete\Core\Application\Application $application)
     {
         $this->app = $application;
@@ -48,8 +53,8 @@ class Marketplace implements ApplicationAwareInterface
         $this->config = $this->app->make('config');
         $this->databaseConfig = $this->app->make('config/database');
         $this->urlResolver = $this->app->make(PathUrlResolver::class);
+        $this->request = $this->app->make(Request::class);
         $this->isConnected = false;
-
         $this->isConnected();
     }
 
@@ -74,12 +79,12 @@ class Marketplace implements ApplicationAwareInterface
 
         if ($csToken != '') {
             $fh = $this->app->make('helper/file');
-            $csiURL = urlencode($this->urlResolver->resolve(['/']));
+            $csiURL = urlencode($this->getSiteURL());
             $url = $this->config->get('concrete.urls.concrete5') . $this->config->get('concrete.urls.paths.marketplace.connect_validate') . "?csToken={$csToken}&csiURL=" . $csiURL . "&csiVersion=" . APP_VERSION;
             $vn = $this->app->make('helper/validation/numbers');
             $r = $this->get($url);
 
-            if ($r === null) {
+            if ($r === null && !$this->connectionError) {
                 $this->isConnected = true;
             } else {
                 if ($vn->integer($r)) {
@@ -87,8 +92,8 @@ class Marketplace implements ApplicationAwareInterface
                     $this->connectionError = $r;
 
                     if ($this->connectionError == self::E_DELETED_SITE_TOKEN) {
-                        $dbConfig->clear('concrete.marketplace.token');
-                        $dbConfig->clear('concrete.marketplace.url_token');
+                        $this->databaseConfig->clear('concrete.marketplace.token');
+                        $this->databaseConfig->clear('concrete.marketplace.url_token');
                     }
                 } else {
                     $this->isConnected = false;
@@ -122,6 +127,10 @@ class Marketplace implements ApplicationAwareInterface
             return null;
         }
 
+        if ($result === false) {
+            $this->connectionError = self::E_GENERAL_CONNECTION_ERROR;
+        }
+
         return $result ?: null;
     }
 
@@ -146,9 +155,7 @@ class Marketplace implements ApplicationAwareInterface
     {
         // Get the marketplace instance
         $marketplace = static::getInstance();
-        $marketplace->app->make('test');
-
-        $file .= '?csiURL=' . urlencode($marketplace->urlResolver->resolve(['/'])) . "&csiVersion=" . APP_VERSION;
+        $file .= '?csiURL=' . urlencode($marketplace->getSiteURL()) . "&csiVersion=" . APP_VERSION;
 
         // Retreive the package
         $pkg = $marketplace->get($file);
@@ -184,9 +191,24 @@ class Marketplace implements ApplicationAwareInterface
      */
     public static function checkPackageUpdates()
     {
+        $marketplace = static::getInstance();
+        $skipPackages = $marketplace->config->get('concrete.updates.skip_packages');
+        if ($skipPackages === true) {
+            return;
+        }
+        if (!$skipPackages) {
+            // In case someone uses false or NULL or an empty string
+            $skipPackages = [];
+        } else {
+            // In case someone uses a single package handle
+            $skipPackages = (array) $skipPackages;
+        }
         $em = \ORM::entityManager();
         $items = self::getAvailableMarketplaceItems(false);
         foreach ($items as $i) {
+            if (in_array($i->getHandle(), $skipPackages, true)) {
+                continue;
+            }
             $p = Package::getByHandle($i->getHandle());
             if (is_object($p)) {
                 /**
@@ -210,7 +232,7 @@ class Marketplace implements ApplicationAwareInterface
 
         // Retrieve the URL contents
         $csToken = $marketplace->databaseConfig->get('concrete.marketplace.token');
-        $csiURL = urlencode($marketplace->urlResolver->resolve(['/']));
+        $csiURL = urlencode($marketplace->getSiteURL());
         $url = $marketplace->config->get('concrete.urls.concrete5') . $marketplace->config->get('concrete.urls.paths.marketplace.purchases');
         $url .= "?csToken={$csToken}&csiURL=" . $csiURL . "&csiVersion=" . APP_VERSION;
         $json = $marketplace->get($url);
@@ -231,7 +253,7 @@ class Marketplace implements ApplicationAwareInterface
             } catch (Exception $e) {
             }
 
-            if ($filterInstalled && is_array($addons)) {
+            if ($filterInstalled) {
                 $handles = Package::getInstalledHandles();
                 if (is_array($handles)) {
                     $adlist = array();
@@ -255,8 +277,7 @@ class Marketplace implements ApplicationAwareInterface
 
     public function getSitePageURL()
     {
-        $dbConfig = $this->app->make('config/database');
-        $token = $dbConfig->get('concrete.marketplace.url_token');
+        $token = $this->databaseConfig->get('concrete.marketplace.url_token');
         $url = $this->config->get('concrete.urls.concrete5') . $this->config->get('concrete.urls.paths.site_page');
 
         return $url . '/' . $token;
@@ -268,9 +289,10 @@ class Marketplace implements ApplicationAwareInterface
         // a. go to its purchase page
         // b. pass you through to the page AFTER connecting.
         $tp = new TaskPermission();
-        $frameURL = $this->config->get('concrete.urls.concrete5');
-        if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == 'on') {
+        if ($this->request->getScheme() === 'https') {
             $frameURL = $this->config->get('concrete.urls.concrete5_secure');
+        } else {
+            $frameURL = $this->config->get('concrete.urls.concrete5');
         }
         if ($tp->canInstallPackages()) {
             $csToken = null;
@@ -282,7 +304,7 @@ class Marketplace implements ApplicationAwareInterface
                     ));
                 }
                 $csReferrer = urlencode($completeURL);
-                $csiURL = urlencode($this->urlResolver->resolve(['/']));
+                $csiURL = urlencode($this->getSiteURL());
 
                 // this used to be the BASE_URL and not BASE_URL . DIR_REL but I don't have a method for that
                 // and honestly I'm not sure why it needs to be that way
@@ -291,9 +313,9 @@ class Marketplace implements ApplicationAwareInterface
                 if ($this->hasConnectionError()) {
                     if ($this->connectionError == self::E_DELETED_SITE_TOKEN) {
                         $connectMethod = 'view';
-                        $csToken = self::generateSiteToken();
-
-                        if (!$csToken && $this->connectionError === self::E_CONNECTION_TIMEOUT) {
+                        try {
+                            $csToken = self::generateSiteToken();
+                        } catch (RequestException $exception) {
                             return '<div class="ccm-error">' .
                                 t('Unable to generate a marketplace token. Request timed out.') .
                                 '</div>';
@@ -303,9 +325,9 @@ class Marketplace implements ApplicationAwareInterface
                     }
                 } else {
                     // new connection
-                    $csToken = self::generateSiteToken();
-
-                    if (!$csToken && $this->connectionError === self::E_CONNECTION_TIMEOUT) {
+                    try {
+                        $csToken = self::generateSiteToken();
+                    } catch (RequestException $exception) {
                         return '<div class="ccm-error">' .
                         t('Unable to generate a marketplace token. Request timed out.') .
                         '</div>';
@@ -318,7 +340,7 @@ class Marketplace implements ApplicationAwareInterface
                         ENT_QUOTES,
                         APP_CHARSET);
             } else {
-                $csiBaseURL = urlencode($this->urlResolver->resolve(['/']));
+                $csiBaseURL = urlencode($this->getSiteURL());
                 $url = $frameURL . $this->config->get('concrete.urls.paths.marketplace.connect_success') . '?csToken=' . $this->getSiteToken() . '&csiBaseURL=' . $csiBaseURL;
             }
 
@@ -356,6 +378,8 @@ class Marketplace implements ApplicationAwareInterface
 
     /**
      * @return bool|string
+     *
+     * @throws RequestException
      */
     public function generateSiteToken()
     {
@@ -374,6 +398,13 @@ class Marketplace implements ApplicationAwareInterface
         return $token;
     }
 
+    public function getSiteURL()
+    {
+        $url = $this->app->make('url/canonical');
+        $url = rtrim((string) $url, '/');
+        return $url;
+    }
+
     public function getMarketplacePurchaseFrame($mp, $width = '100%', $height = '530')
     {
         $tp = new TaskPermission();
@@ -384,7 +415,7 @@ class Marketplace implements ApplicationAwareInterface
             }
             if ($this->isConnected()) {
                 $url = $this->config->get('concrete.urls.concrete5_secure') . $this->config->get('concrete.urls.paths.marketplace.checkout');
-                $csiURL = urlencode($this->urlResolver->resolve(['/']));
+                $csiURL = urlencode($this->getSiteURL());
                 $csiBaseURL = $csiURL;
                 $csToken = $this->getSiteToken();
                 $url = $url . '/' . $mp->getProductBlockID() . '?ts=' . time() . '&csiBaseURL=' . $csiBaseURL . '&csiURL=' . $csiURL . '&csToken=' . $csToken;

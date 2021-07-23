@@ -3,6 +3,8 @@ namespace Concrete\Block\TopicList;
 
 use Concrete\Core\Attribute\Key\CollectionKey;
 use Concrete\Core\Block\BlockController;
+use Concrete\Core\Feature\Features;
+use Concrete\Core\Feature\UsesFeatureInterface;
 use Concrete\Core\Tree\Tree;
 use Concrete\Core\Tree\Type\Topic as TopicTree;
 use Concrete\Core\Tree\Type\Topic;
@@ -10,13 +12,14 @@ use Core;
 
 defined('C5_EXECUTE') or die("Access Denied.");
 
-class Controller extends BlockController
+class Controller extends BlockController implements UsesFeatureInterface
 {
     public $helpers = array('form');
 
     protected $btInterfaceWidth = 400;
     protected $btInterfaceHeight = 400;
     protected $btTable = 'btTopicList';
+    protected $btExportPageColumns = ['cParentID'];
 
     public function getBlockTypeDescription()
     {
@@ -32,11 +35,18 @@ class Controller extends BlockController
     {
         $this->edit();
         $this->set('title', t('Topics'));
+        $this->set('titleFormat', 'h5');
+    }
+    
+    public function getRequiredFeatures(): array
+    {
+        return [
+            Features::TAXONOMY
+        ];
     }
 
     public function edit()
     {
-        $this->requireAsset('core/topics');
         $tt = new TopicTree();
         $defaultTree = $tt->getDefault();
         $tree = $tt->getByID(Core::make('helper/security')->sanitizeInt($this->topicTreeID));
@@ -87,6 +97,7 @@ class Controller extends BlockController
         if ($topic) {
             $nodeName = $topic->getTreeNodeName();
             $nodeName = strtolower($nodeName); // convert to lowercase
+            $nodeName = preg_replace('/[[:space:]]+/', '-', $nodeName);
             $nodeName = Core::make('helper/text')->encodePath($nodeName); // urlencode
             return \URL::page($c, 'topic', $topic->getTreeNodeID(), $nodeName);
         } else {

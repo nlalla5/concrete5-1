@@ -6,34 +6,33 @@ use Concrete\Core\Attribute\Key\FileKey;
 use Concrete\Core\Block\BlockController;
 use Concrete\Core\Block\View\BlockView;
 use Concrete\Core\Entity\File\Version;
-use Concrete\Core\File\FileList;
+use Concrete\Core\Feature\Features;
+use Concrete\Core\Feature\UsesFeatureInterface;
 use Concrete\Core\File\Filesystem;
 use Concrete\Core\File\FolderItemList;
 use Concrete\Core\File\Importer;
 use Concrete\Core\File\Set\Set;
 use Concrete\Core\File\Set\SetList;
 use Concrete\Core\File\Type\Type;
-use Concrete\Core\Form\Service\Widget\Attribute;
 use Concrete\Core\Http\ResponseFactory;
-use Concrete\Core\Site\Service;
 use Concrete\Core\Tree\Node\Node;
 use Concrete\Core\Tree\Node\Type\File;
 use Concrete\Core\Tree\Node\Type\FileFolder;
-use Concrete\Core\Url\Resolver\Manager\ResolverManager;
 use Concrete\Core\Url\UrlImmutable;
 use Concrete\Core\User\User;
+use Concrete\Core\Tree\Node\NodeType;
 use Core;
+use Doctrine\DBAL\Connection;
 use FileAttributeKey;
 
-class Controller extends BlockController
+class Controller extends BlockController implements UsesFeatureInterface
 {
-
-    protected $btInterfaceWidth = "640";
-    protected $btInterfaceHeight = "400";
+    protected $btInterfaceWidth = '640';
+    protected $btInterfaceHeight = '400';
     protected $btTable = 'btDocumentLibrary';
-    protected $fileAttributes = array();
+    protected $fileAttributes = [];
 
-    /** @var null|FileFolder */
+    /** @var FileFolder|null */
     protected $rootNode = null;
 
     /** @var int */
@@ -41,18 +40,25 @@ class Controller extends BlockController
 
     public function getBlockTypeDescription()
     {
-        return t("Add a searchable document library to a page.");
+        return t('Add a searchable document library to a page.');
     }
 
     public function getBlockTypeName()
     {
-        return t("Document Library");
+        return t('Document Library');
+    }
+
+    public function getRequiredFeatures(): array
+    {
+        return [
+            Features::DOCUMENTS
+        ];
     }
 
     public function action_navigate($blockID, $folderID = 0)
     {
-        if ($blockID != $this->bID) {
-            return;
+        if ($blockID != $this->bID || $this->hideFolders) {
+            return $this->view();
         }
 
         $parentID = intval($this->folderID);
@@ -101,12 +107,17 @@ class Controller extends BlockController
 
     public function loadData()
     {
-        $this->set('folders', $this->getFileFolders($this->getRootFolder(true)));
+        $folderNodes = Node::getNodesOfType('file_folder');
+        $folders = [];
+        foreach($folderNodes as $folderNode) {
+            $folders[$folderNode->getTreeNodeID()] = $folderNode->getTreeNodeDisplayPath();
+        }
+        $this->set('folders', $folders);
 
         $fsl = new SetList();
         $fsl->filterByType(Set::TYPE_PUBLIC);
         $r = $fsl->get();
-        $sets = array();
+        $sets = [];
         foreach ($r as $fs) {
             $fsp = new \Permissions($fs);
             if ($fsp->canSearchFiles()) {
@@ -115,27 +126,27 @@ class Controller extends BlockController
         }
         $this->set('fileSets', $sets);
 
-        $searchProperties = array(
+        $searchProperties = [
             'date' => t('Date Posted'),
             'type' => t('File Type'),
-            'extension' => t('File Extension')
-        );
+            'extension' => t('File Extension'),
+        ];
         foreach ($this->fileAttributes as $ak) {
             $searchProperties['ak_' . $ak->getAttributeKeyID()] = $ak->getAttributeKeyDisplayName();
         }
         $this->set('searchProperties', $searchProperties);
 
-        $orderByOptions = array(
+        $orderByOptions = [
             'title' => t('Title'),
             'set' => tc('Order of a set', 'Set Order'),
             'date' => t('Date Posted'),
-            'filename' => t('Filename')
-        );
+            'filename' => t('Filename'),
+        ];
         foreach ($this->fileAttributes as $ak) {
             $orderByOptions['ak_' . $ak->getAttributeKeyID()] = $ak->getAttributeKeyDisplayName();
         }
         $this->set('orderByOptions', $orderByOptions);
-        $viewProperties = array(
+        $viewProperties = [
             'thumbnail' => t('Thumbnail'),
             'filename' => t('Filename'),
             'tags' => t('Tags'),
@@ -143,13 +154,13 @@ class Controller extends BlockController
             'extension' => t('Extension'),
             'size' => t('Size'),
             'description' => t('Description'),
-        );
+        ];
         foreach ($this->fileAttributes as $ak) {
             $viewProperties['ak_' . $ak->getAttributeKeyID()] = $ak->getAttributeKeyDisplayName();
         }
         $this->set('viewProperties', $viewProperties);
 
-        $expandableProperties = array(
+        $expandableProperties = [
             'image' => t('Image'),
             'description' => t('Description'),
             'tags' => t('Tags'),
@@ -157,23 +168,22 @@ class Controller extends BlockController
             'date' => t('Date Posted'),
             'extension' => t('Extension'),
             'size' => t('Size'),
-        );
+        ];
         foreach ($this->fileAttributes as $ak) {
             $expandableProperties['ak_' . $ak->getAttributeKeyID()] = $ak->getAttributeKeyDisplayName();
         }
         $this->set('expandableProperties', $expandableProperties);
-
     }
 
     public function edit()
     {
         $this->loadData();
-        $this->set('selectedSets', (array)json_decode($this->setIds));
-        $this->set('searchPropertiesSelected', (array)json_decode($this->searchProperties));
-        $viewPropertiesDoNotDisplay = array();
-        $viewPropertiesDisplay = array();
-        $viewPropertiesDisplaySortable = array();
-        $viewProperties = (array)json_decode($this->viewProperties);
+        $this->set('selectedSets', (array) json_decode($this->setIds));
+        $this->set('searchPropertiesSelected', (array) json_decode($this->searchProperties));
+        $viewPropertiesDoNotDisplay = [];
+        $viewPropertiesDisplay = [];
+        $viewPropertiesDisplaySortable = [];
+        $viewProperties = (array) json_decode($this->viewProperties);
         foreach ($viewProperties as $key => $type) {
             switch ($type) {
                 case -1:
@@ -185,13 +195,12 @@ class Controller extends BlockController
                 case 5:
                     $viewPropertiesDisplaySortable[] = $key;
                     break;
-
             }
         }
         $this->set('viewPropertiesDoNotDisplay', $viewPropertiesDoNotDisplay);
         $this->set('viewPropertiesDisplay', $viewPropertiesDisplay);
         $this->set('viewPropertiesDisplaySortable', $viewPropertiesDisplaySortable);
-        $this->set('expandablePropertiesSelected', (array)json_decode($this->expandableProperties));
+        $this->set('expandablePropertiesSelected', (array) json_decode($this->expandableProperties));
     }
 
     public function getSortColumnKey($key, $retrieve = 'filelist')
@@ -203,7 +212,6 @@ class Controller extends BlockController
                 if (is_object($ak)) {
                     return 'ak_' . $ak->getAttributeKeyHandle();
                 }
-
             } else {
                 $akHandle = substr($key, 3);
                 $ak = FileKey::getByHandle($akHandle);
@@ -213,7 +221,7 @@ class Controller extends BlockController
             }
         }
 
-        $properties = array(
+        $properties = [
             'title' => 'fv.fvTitle',
             'filename' => 'fv.fvFilename',
             'tags' => 'fv.fvTags',
@@ -221,7 +229,7 @@ class Controller extends BlockController
             'extension' => 'fv.fvExtension',
             'size' => 'fv.fvSize',
             'description' => 'fv.fvDescription',
-        );
+        ];
 
         foreach ($properties as $block => $filelist) {
             if ($retrieve == 'filelist' && $key == $block) {
@@ -239,18 +247,18 @@ class Controller extends BlockController
         $this->loadData();
         $this->set('setMode', 'any');
         $this->set('enableSearch', 0);
-        $this->set('selectedSets', array());
-        $this->set('searchPropertiesSelected', array());
-        $this->set('expandablePropertiesSelected', array());
-        $viewPropertiesDoNotDisplay = array();
+        $this->set('selectedSets', []);
+        $this->set('searchPropertiesSelected', []);
+        $this->set('expandablePropertiesSelected', []);
+        $viewPropertiesDoNotDisplay = [];
         foreach ($this->get('viewProperties') as $key => $name) {
-            if (!in_array($key, array('filename', 'size', 'date', 'thumbnail'))) {
+            if (!in_array($key, ['filename', 'size', 'date', 'thumbnail'])) {
                 $viewPropertiesDoNotDisplay[] = $key;
             }
         }
         $this->set('viewPropertiesDoNotDisplay', $viewPropertiesDoNotDisplay);
-        $this->set('viewPropertiesDisplay', array('thumbnail'));
-        $this->set('viewPropertiesDisplaySortable', array('filename', 'size', 'date'));
+        $this->set('viewPropertiesDisplay', ['thumbnail']);
+        $this->set('viewPropertiesDisplaySortable', ['filename', 'size', 'date']);
         $this->set('displayLimit', 20);
         $this->set('downloadFileMethod', 'browser');
         $this->set('heightMode', 'auto');
@@ -262,23 +270,38 @@ class Controller extends BlockController
 
         if (count($sets)) {
             $query = $list->getQueryObject();
-            $query->leftJoin('tf', 'FileSetFiles', 'fsf', 'tf.fID = fsf.fID');
 
             switch ($this->setMode) {
                 case 'all':
                     // Show files in ALL sets
-                    $query->andWhere(
-                        $query->expr()->orX(
-                            'nt.treeNodeTypeHandle = "file_folder"',
-                            $query->expr()->in('fsf.fsID', $sets)
-                        )
-                    );
+                    asort($sets);
+                    $sets = array_unique(array_map('intval', $sets));
+
+                    // Set up a subselect that we can join to get file set files
+                    $subselect = $query->getConnection()->createQueryBuilder();
+                    $subselect
+                        ->select('count(distinct fsf.fsID) as sets')
+                        ->addSelect('fsf.fID')
+                        ->from('FileSetFiles', 'fsf')
+                        ->where('fsf.fsID in (:sets)')
+                        ->groupBy('fsf.fID');
+
+                    $query
+                        ->leftJoin('tf', sprintf('(%s)', $subselect->getSQL()), 'fsf', 'tf.fID = fsf.fID')
+                        ->where($query->expr()->andX('fsf.sets=:count', 'fsf.sets > 0'))
+                        ->setParameter('sets', $sets, Connection::PARAM_INT_ARRAY)
+                        ->setParameter('count', count($sets));
+
+                    if (!$this->hideFolders) {
+                        $query->orWhere('nt.treeNodeTypeHandle = "file_folder"');
+                    }
                     break;
                 case 'any':
                 default:
-                    // Show files in ANY of the sets
-                    $expr = $query->expr()->orX('nt.treeNodeTypeHandle = "file_folder"');
+                    $query->leftJoin('tf', 'FileSetFiles', 'fsf', 'tf.fID = fsf.fID');
 
+                    // Show files in ANY of the sets
+                    $expr = $query->expr()->orX($this->hideFolders ? '1=0' : 'nt.treeNodeTypeHandle = "file_folder"');
                     foreach ($sets as $set) {
                         $expr->add($query->expr()->eq('fsf.fsID', $set));
                     }
@@ -291,27 +314,10 @@ class Controller extends BlockController
         return $list;
     }
 
-    protected function getFileFolders(FileFolder $rootFolder)
-    {
-        /** @var \Concrete\Core\File\FolderItemList $list */
-        $list = $rootFolder->getFolderItemList($this->app->make(User::class), $this->app->make('request'));
-
-        foreach ($list->getResults() as $folder) {
-            if ($folder instanceof FileFolder) {
-                yield $folder->getTreeNodeID() => $folder->getTreeNodeDisplayPath();
-
-                // yield from $this->getFileFolders($folder); // PHP 7.0+ :'(
-                foreach ($this->getFileFolders($folder) as $key => $value) {
-                    yield $key => $value;
-                }
-            }
-        }
-    }
-
     protected function getTableColumns($results)
     {
-        $viewProperties = (array)json_decode($this->viewProperties);
-        $return = array();
+        $viewProperties = (array) json_decode($this->viewProperties);
+        $return = [];
         if (array_key_exists('thumbnail', $viewProperties) && $viewProperties['thumbnail'] > -1) {
             $return[] = 'thumbnail';
         }
@@ -340,7 +346,7 @@ class Controller extends BlockController
             }
         }
 
-        $expandableProperties = (array)json_decode($this->expandableProperties);
+        $expandableProperties = (array) json_decode($this->expandableProperties);
         if (count($expandableProperties)) {
             $return[] = 'details';
         }
@@ -350,21 +356,23 @@ class Controller extends BlockController
 
     protected function getTableExpandableProperties()
     {
-        $expandableProperties = (array)json_decode($this->expandableProperties);
-        $return = array();
+        $expandableProperties = (array) json_decode($this->expandableProperties);
+        $return = [];
         foreach ($expandableProperties as $key) {
             $return[] = $key;
         }
+
         return $return;
     }
 
     protected function getTableSearchProperties()
     {
-        $searchProperties = (array)json_decode($this->searchProperties);
-        $return = array();
+        $searchProperties = (array) json_decode($this->searchProperties);
+        $return = [];
         foreach ($searchProperties as $key) {
             $return[] = $key;
         }
+
         return $return;
     }
 
@@ -377,7 +385,7 @@ class Controller extends BlockController
                 return t('Detail Image');
             case 'edit_properties':
             case 'details':
-                return "";
+                return '';
             case 'thumbnail':
                 return t('Thumbnail');
             case 'filename':
@@ -416,6 +424,7 @@ class Controller extends BlockController
         if ($orderBy && $orderBy == $key) {
             $class .= ' ccm-block-document-library-active-sort-' . $order;
         }
+
         return $class;
     }
 
@@ -434,6 +443,7 @@ class Controller extends BlockController
             $query['dir'] = $order;
             $url = $url->setQuery($query);
         }
+
         return $url;
     }
 
@@ -445,7 +455,8 @@ class Controller extends BlockController
         if ($key == 'details') {
             return false;
         }
-        $viewProperties = (array)json_decode($this->viewProperties);
+        $viewProperties = (array) json_decode($this->viewProperties);
+
         return isset($viewProperties[$key]) && $viewProperties[$key] == 5;
     }
 
@@ -455,22 +466,25 @@ class Controller extends BlockController
             case 'type':
                 $form = \Core::make('helper/form');
                 $t1 = Type::getTypeList();
-                $types = array('' => t('** File type'));
+                $types = ['' => t('** File type')];
                 foreach ($t1 as $value) {
                     $types[$value] = Type::getGenericTypeText($value);
                 }
-                return $form->select('type', $types, array('style' => 'width: 120px'));
+
+                return $form->select('type', $types, ['style' => 'width: 120px']);
             case 'extension':
                 $form = \Core::make('helper/form');
                 $ext1 = Type::getUsedExtensionList();
-                $extensions = array('' => t('** File Extension'));
+                $extensions = ['' => t('** File Extension')];
                 foreach ($ext1 as $value) {
                     $extensions[$value] = $value;
                 }
-                return $form->select('extension', $extensions, array('style' => 'width: 120px'));
+
+                return $form->select('extension', $extensions, ['style' => 'width: 120px']);
             case 'date':
                 $wdt = \Core::make('helper/form/date_time');
-                print $wdt->translate($_REQUEST['date_from']);
+                echo $wdt->translate($_REQUEST['date_from']);
+
                 return $wdt->datetime('date_from', $wdt->translate('date_from', $_REQUEST),
                         true) . t('to') . $wdt->datetime('date_to', $wdt->translate('date_to', $_REQUEST), true);
             default:
@@ -491,7 +505,7 @@ class Controller extends BlockController
         $table = $category->getIndexedSearchTable();
         $query->leftJoin('fv', $table, 'fis', 'fv.fID = fis.fID');
 
-        $searchProperties = (array)json_decode($this->searchProperties);
+        $searchProperties = (array) json_decode($this->searchProperties);
         foreach ($searchProperties as $column) {
             switch ($column) {
                 case 'type':
@@ -539,6 +553,7 @@ class Controller extends BlockController
                     break;
             }
         }
+
         return $list;
     }
 
@@ -548,6 +563,8 @@ class Controller extends BlockController
             $file = $file->getTreeNodeFileObject();
         } elseif ($file instanceof FileFolder) {
             return $this->getFolderColumnValue($key, $file);
+        } else {
+            return false;
         }
 
         switch ($key) {
@@ -555,7 +572,6 @@ class Controller extends BlockController
 
                 $im = Core::make('helper/image');
                 if ($file->getTypeObject()->getGenericType() == Type::T_IMAGE && $this->maxThumbWidth && $this->maxThumbHeight) {
-
                     $thumb = $im->getThumbnail(
                         $file,
                         $this->maxThumbWidth,
@@ -571,7 +587,7 @@ class Controller extends BlockController
                 break;
             case 'image':
                 if ($file->getTypeObject()->getGenericType() == Type::T_IMAGE) {
-                    return sprintf('<img src="%s" class="img-responsive" />', $file->getRelativePath());
+                    return sprintf('<img src="%s" class="img-fluid" />', $file->getRelativePath());
                 }
                 break;
             case 'edit_properties':
@@ -601,7 +617,7 @@ class Controller extends BlockController
                 return $file->getTags();
                 break;
             case 'date':
-                return Core::make("date")->formatDate($file->getDateAdded(), false);
+                return Core::make('date')->formatDate($file->getDateAdded(), false);
                 break;
             case 'extension':
                 return $file->getExtension();
@@ -624,7 +640,7 @@ class Controller extends BlockController
 
     public function action_upload($bID = false)
     {
-        $files = array();
+        $files = [];
         if ($this->bID == $bID) {
             $fp = \FilePermissions::getGlobal();
             $cf = \Loader::helper('file');
@@ -645,7 +661,7 @@ class Controller extends BlockController
                                     $fs->addFileToSet($file);
                                 }
                             }
-                            /** @var \Concrete\Core\Entity\File\File $file */
+                            /* @var \Concrete\Core\Entity\File\File $file */
                             $files[] = $file;
                         }
                     }
@@ -662,15 +678,18 @@ class Controller extends BlockController
         $r = new \Concrete\Core\File\EditResponse();
         $r->setFiles($files);
         $r->outputJSON();
-
     }
 
     protected function setupFolderFileFolderFilter(FolderItemList $list)
     {
         if ($this->rootNode) {
             $list->filterByParentFolder($this->rootNode);
-        } else {
+        } elseif ((int) $this->folderID !== 0 || !$this->hideFolders) {
+            // If we have a subfolder selected, or if hidefolders is disabled
             $list->filterByParentFolder($this->getRootFolder());
+        } elseif ((int) $this->folderID === 0 && $this->hideFolders) {
+            // If we have the top level folder selected and hidefolders is enabled
+            $list->enableSubFolderSearch();
         }
 
         return $list;
@@ -688,6 +707,7 @@ class Controller extends BlockController
         $order = $this->displayOrderDesc ? 'desc' : 'asc';
         $orderBy = $this->getSortColumnKey($this->orderBy, 'filelist');
         if ($orderBy) {
+            $list->getQueryObject()->addSelect($orderBy);
             $list->sortBy($orderBy, $order);
         }
 
@@ -718,7 +738,7 @@ class Controller extends BlockController
         }
 
         if ($this->onlyCurrentUser) {
-            $u = new \User();
+            $u = $this->app->make(User::class);
             if ($u->isRegistered()) {
                 $uID = $u->getUserID();
                 $query = $list->getQueryObject();
@@ -747,19 +767,13 @@ class Controller extends BlockController
         $this->set('tableSearchProperties', $this->getTableSearchProperties());
         $this->set('list', $list);
         $this->set('results', $results);
+        $this->set('hideFolders', $this->hideFolders);
 
         $this->requireAsset('css', 'font-awesome');
-        if ($this->enableSearch) {
-            $this->requireAsset('jquery/ui');
-        }
         $this->set('canAddFiles', false);
         $fp = \FilePermissions::getGlobal();
-        if ($this->allowInPageFileManagement) {
-            $this->requireAsset('core/file-manager');
-        }
 
         if ($this->allowFileUploading && $fp->canAddFile()) {
-            $this->requireAsset('core/file-manager');
             $this->set('canAddFiles', true);
         }
 
@@ -773,45 +787,61 @@ class Controller extends BlockController
 
     public function save($args)
     {
-        $data = array();
-        $fsID = array();
-        if (isset($args['fsID']) && is_array($args['fsID'])) {
-            $fsID = $args['fsID'];
-        }
-        $viewProperties = array();
-        if (isset($args['viewProperties']) && is_array($args['viewProperties'])) {
-            $viewProperties = $args['viewProperties'];
-        }
-        $searchProperties = array();
-        if (isset($args['searchProperties']) && is_array($args['searchProperties'])) {
-            $searchProperties = $args['searchProperties'];
-        }
-        $expandableProperties = array();
-        if (isset($args['expandableProperties']) && is_array($args['expandableProperties'])) {
-            $expandableProperties = $args['expandableProperties'];
-        }
-        $data['folderID'] = array_get($args, 'folderID');
-        $data['viewProperties'] = json_encode($viewProperties);
-        $data['searchProperties'] = json_encode($searchProperties);
-        $data['expandableProperties'] = json_encode($expandableProperties);
-        $data['setIds'] = json_encode($fsID);
-        $data['setMode'] = $args['setMode'] == 'all' ? 'all' : 'any';
-        $data['onlyCurrentUser'] = $args['onlyCurrentUser'] == '1' ? 1 : 0;
-        $data['allowInPageFileManagement'] = $args['allowInPageFileManagement'] == '1' ? 1 : 0;
-        $data['allowFileUploading'] = $args['allowFileUploading'] == '1' ? 1 : 0;
-        $data['tags'] = $args['tags'];
-        $data['orderBy'] = $args['orderBy'];
-        $data['displayLimit'] = $args['displayLimit'];
-        $data['displayOrderDesc'] = $args['displayOrderDesc'] == '1' ? 1 : 0;
-        $data['maxThumbWidth'] = intval($args['maxThumbWidth']);
-        $data['maxThumbHeight'] = intval($args['maxThumbHeight']);
-        $data['enableSearch'] = $args['enableSearch'] == '1' ? 1 : 0;
-        $data['heightMode'] = $args['heightMode'] == 'fixed' ? 'fixed' : 'auto';
-        $data['downloadFileMethod'] = $args['downloadFileMethod'] == 'force' ? 'force' : 'browser';
-        $data['fixedHeightSize'] = intval($args['fixedHeightSize']);
-        $data['headerBackgroundColor'] = $args['headerBackgroundColor'];
-        $data['addFilesToSetID'] = 0;
-        if (isset($args['addFilesToSetID']) && $args['addFilesToSetID'] > 0) {
+        $args += [
+            'folderID' => null,
+            'viewProperties' => null,
+            'searchProperties' => null,
+            'expandableProperties' => null,
+            'fsID' => null,
+            'setMode' => null,
+            'tags' => null,
+            'orderBy' => null,
+            'displayLimit' => null,
+            'maxThumbWidth' => null,
+            'maxThumbHeight' => null,
+            'heightMode' => null,
+            'downloadFileMethod' => null,
+            'fixedHeightSize' => null,
+            'headerBackgroundColor' => null,
+            'addFilesToSetID' => 0,
+            'headerBackgroundColorActiveSort' => null,
+            'headerTextColor' => null,
+            'tableName' => '',
+            'tableDescription' => '',
+            'rowBackgroundColorAlternate' => null,
+        ];
+
+        $data = [
+            'folderID' => $args['folderID'],
+            'viewProperties' => json_encode(is_array($args['viewProperties']) ? $args['viewProperties'] : []),
+            'searchProperties' => json_encode(is_array($args['searchProperties']) ? $args['searchProperties'] : []),
+            'expandableProperties' => json_encode(is_array($args['expandableProperties']) ? $args['expandableProperties'] : []),
+            'setIds' => json_encode(is_array($args['fsID']) ? $args['fsID'] : []),
+            'setMode' => $args['setMode'] == 'all' ? 'all' : 'any',
+            'onlyCurrentUser' => empty($args['onlyCurrentUser']) ? 0 : 1,
+            'allowInPageFileManagement' => empty($args['allowInPageFileManagement']) ? 0 : 1,
+            'allowFileUploading' => empty($args['allowFileUploading']) ? 0 : 1,
+            'tags' => $args['tags'],
+            'orderBy' => $args['orderBy'],
+            'displayLimit' => $args['displayLimit'],
+            'displayOrderDesc' => empty($args['displayOrderDesc']) ? 0 : 1,
+            'maxThumbWidth' => (int) $args['maxThumbWidth'],
+            'maxThumbHeight' => (int) $args['maxThumbHeight'],
+            'enableSearch' => empty($args['enableSearch']) ? 0 : 1,
+            'heightMode' => $args['heightMode'] == 'fixed' ? 'fixed' : 'auto',
+            'downloadFileMethod' => $args['downloadFileMethod'] == 'force' ? 'force' : 'browser',
+            'fixedHeightSize' => (int) $args['fixedHeightSize'],
+            'headerBackgroundColor' => $args['headerBackgroundColor'],
+            'addFilesToSetID' => 0,
+            'headerBackgroundColorActiveSort' => $args['headerBackgroundColorActiveSort'],
+            'headerTextColor' => $args['headerTextColor'],
+            'tableName' => $args['tableName'],
+            'tableDescription' => $args['tableDescription'],
+            'tableStriped' => empty($args['tableStriped']) ? 0 : 1,
+            'rowBackgroundColorAlternate' => empty($args['tableStriped']) ? '' : $args['rowBackgroundColorAlternate'],
+            'hideFolders' => (int) !filter_var(array_get($args, 'showFolders'), FILTER_VALIDATE_BOOLEAN),
+        ];
+        if ((int) $args['addFilesToSetID'] > 0) {
             $fs = \FileSet::getByID($args['addFilesToSetID']);
             if (is_object($fs)) {
                 $fsp = new \Permissions($fs);
@@ -820,22 +850,12 @@ class Controller extends BlockController
                 }
             }
         }
-        $data['addFilesToSetID'] = intval($args['addFilesToSetID']);
-        $data['headerBackgroundColorActiveSort'] = $args['headerBackgroundColorActiveSort'];
-        $data['headerTextColor'] = $args['headerTextColor'];
-        $data['tableName'] = $args['tableName'];
-        $data['tableDescription'] = $args['tableDescription'];
-        $data['tableStriped'] = $args['tableStriped'] == '1' ? 1 : 0;
-        if ($data['tableStriped']) {
-            $data['rowBackgroundColorAlternate'] = $args['rowBackgroundColorAlternate'];
-        } else {
-            $data['rowBackgroundColorAlternate'] = '';
-        }
         parent::save($data);
     }
 
     /**
      * @param bool $realRoot
+     *
      * @return FileFolder
      */
     private function getRootFolder($realRoot = false)
@@ -844,17 +864,17 @@ class Controller extends BlockController
             if ($folder = FileFolder::getByID($folderID)) {
                 return $folder;
             } else {
-                throw new \RuntimeException('Invalid Folder ID');
+                return new FileFolder();
             }
         }
 
         $filesystem = $this->app->make(Filesystem::class);
+
         return $filesystem->getRootFolder();
     }
 
     private function getFolderColumnValue($key, FileFolder $folder)
     {
-
         switch ($key) {
             case 'thumbnail':
             case 'image':
@@ -865,7 +885,7 @@ class Controller extends BlockController
             case 'title':
                 $view = new BlockView($this->getBlockObject());
                 /** @var UrlImmutable $action */
-                $action = $view->action('navigate');
+                $action = $this->getActionURL('navigate');
                 $actionPath = $action->getPath();
                 $actionPath->append($folder->getTreeNodeID());
                 $action = $action->setPath($actionPath);
@@ -877,7 +897,7 @@ class Controller extends BlockController
                 return [];
                 break;
             case 'date':
-                return $this->app->make("date")->formatDate($folder->getDateCreated(), false);
+                return $this->app->make('date')->formatDate($folder->getDateCreated(), false);
             case 'extension':
             case 'size':
             case 'description':
@@ -897,7 +917,7 @@ class Controller extends BlockController
             if ($crumb->getTreeNodeID() == $this->getRootFolder()->getTreeNodeID()) {
                 $action = $this->getBlockObject()->getBlockCollectionObject()->getCollectionLink();
             } else {
-                $action = $view->action('navigate');
+                $action = $this->getActionURL('navigate');
                 $actionPath = $action->getPath();
                 $actionPath->append($crumb->getTreeNodeID());
                 $action = $action->setPath($actionPath);
@@ -919,20 +939,21 @@ class Controller extends BlockController
     /**
      * @param FolderItemList $list
      * @param string $keywords
+     *
      * @return \Concrete\Core\File\FolderItemList
      */
     private function setupKeywordSearch(FolderItemList $list, $keywords)
     {
         $this->enableSubFolderSearch($list);
         $query = $list->getQueryObject();
-        $expressions = array(
+        $expressions = [
             $query->expr()->like('fv.fvFilename', ':keywords'),
             $query->expr()->like('fv.fvDescription', ':keywords'),
             $query->expr()->like('fv.fvTitle', ':keywords'),
             $query->expr()->like('fv.fvTags', ':keywords'),
             $query->expr()->like('fv.fvTags', ':keywords'),
             $query->expr()->like('n.treeNodeName', ':keywords'),
-        );
+        ];
 
         $keys = FileAttributeKey::getSearchableIndexedList();
         foreach ($keys as $ak) {
@@ -945,5 +966,4 @@ class Controller extends BlockController
 
         return $list;
     }
-
 }

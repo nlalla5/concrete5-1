@@ -2,7 +2,8 @@
 namespace Concrete\Core\Permission\Key;
 
 use Loader;
-use User;
+use Concrete\Core\User\User;
+use Concrete\Core\Support\Facade\Application;
 use PermissionKey;
 use Concrete\Core\Permission\Duration as PermissionDuration;
 
@@ -10,7 +11,8 @@ class AddBlockBlockTypeKey extends BlockTypeKey
 {
     protected function getAllowedBlockTypeIDs()
     {
-        $u = new User();
+        $app = Application::getFacadeApplication();
+        $u = $app->make(User::class);
         $pae = $this->getPermissionAccessObject();
         if (!is_object($pae)) {
             return array();
@@ -30,18 +32,20 @@ class AddBlockBlockTypeKey extends BlockTypeKey
                 $allBTIDs = $db->GetCol('select btID from BlockTypes where btIsInternal = 0');
             }
             foreach ($list as $l) {
-                if ($l->getBlockTypesAllowedPermission() == 'N') {
-                    $btIDs = array();
-                }
-                if ($l->getBlockTypesAllowedPermission() == 'C') {
-                    if ($l->getAccessType() == PermissionKey::ACCESS_TYPE_EXCLUDE) {
-                        $btIDs = array_values(array_diff($btIDs, $l->getBlockTypesAllowedArray()));
-                    } else {
-                        $btIDs = array_unique(array_merge($btIDs, $l->getBlockTypesAllowedArray()));
-                    }
-                }
-                if ($l->getBlockTypesAllowedPermission() == 'A') {
-                    $btIDs = $allBTIDs;
+                switch ($l->getBlockTypesAllowedPermission()) {
+                    case 'N':
+                        $btIDs = array();
+                        break;
+                    case 'C':
+                        if ($l->getAccessType() == PermissionKey::ACCESS_TYPE_EXCLUDE) {
+                            $btIDs = array_values(array_diff($btIDs, $l->getBlockTypesAllowedArray()));
+                        } else {
+                            $btIDs = array_unique(array_merge($btIDs, $l->getBlockTypesAllowedArray()));
+                        }
+                        break;
+                    case 'A':
+                        $btIDs = $allBTIDs;
+                        break;
                 }
             }
         }
@@ -51,7 +55,8 @@ class AddBlockBlockTypeKey extends BlockTypeKey
 
     public function validate($bt = false)
     {
-        $u = new User();
+        $app = Application::getFacadeApplication();
+        $u = $app->make(User::class);
         if ($u->isSuperUser()) {
             return true;
         }

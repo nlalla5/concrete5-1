@@ -4,13 +4,14 @@ namespace Concrete\Core\Foundation\Runtime\Run;
 use Concrete\Core\Application\ApplicationAwareInterface;
 use Concrete\Core\Application\ApplicationAwareTrait;
 use Concrete\Core\Config\Repository\Repository;
+use Concrete\Core\Foundation\ClassAliasList;
 use Concrete\Core\Http\Request;
 use Concrete\Core\Http\Response;
 use Concrete\Core\Http\ResponseFactoryInterface;
 use Concrete\Core\Http\ServerInterface;
 use Concrete\Core\Localization\Localization;
 use Concrete\Core\Permission\Key\Key;
-use Concrete\Core\Routing\RouterInterface;
+use Concrete\Core\Routing\Router;
 use Concrete\Core\Site\Service as SiteService;
 use Concrete\Core\System\Mutex\MutexBusyException;
 use Concrete\Core\Updater\Migrations\MigrationIncompleteException;
@@ -36,7 +37,7 @@ class DefaultRunner implements RunInterface, ApplicationAwareInterface
     /** @var UrlResolverInterface */
     protected $urlResolver;
 
-    /** @var RouterInterface */
+    /** @var Router */
     protected $router;
 
     /** @var SiteService */
@@ -89,15 +90,19 @@ class DefaultRunner implements RunInterface, ApplicationAwareInterface
                 // want to give packages an opportunity to replace classes and load new classes
                 'setupPackages',
 
+                // Pre-load class aliases
+                // This is needed to avoid the problem of calling functions that accept a class alias as a parameter,
+                // but that alias isn't still auto-loaded. For example, that would result in the following error:
+                // Argument 1 passed to functionName() must be an instance of Area, instance of Concrete\Core\Area\Area given.
+                // Don't use this method: it will be removed in future concrete5 versions
+                'preloadClassAliases',
+
                 // Load site specific timezones. Has to come after packages because it
                 // instantiates the site service, which sometimes packages need to override.
                 'initializeSiteTimezone',
 
                 // Define legacy urls, this may be the first thing that loads the entity manager
                 'initializeLegacyUrlDefinitions',
-
-                // Register legacy tools routes
-                'registerLegacyRoutes',
 
                 // Register legacy config values
                 'registerLegacyConfigValues',
@@ -110,6 +115,7 @@ class DefaultRunner implements RunInterface, ApplicationAwareInterface
             ]);
         } else {
             $this->initializeSystemTimezone();
+            $this->preloadClassAliases();
         }
 
         // Create the request to use
@@ -181,7 +187,7 @@ class DefaultRunner implements RunInterface, ApplicationAwareInterface
      */
     protected function setSystemLocale()
     {
-        $u = new User();
+        $u = $this->app->make(User::class);
         $lan = $u->getUserLanguageToDisplay();
         $loc = Localization::getInstance();
         $loc->setContextLocale(Localization::CONTEXT_UI, $lan);
@@ -201,31 +207,6 @@ class DefaultRunner implements RunInterface, ApplicationAwareInterface
         $name = $this->getSiteService()->getSite()->getSiteName();
 
         $config->set('concrete.site', $name);
-    }
-
-    /**
-     * Register routes that power legacy functionality
-     * This includes `/tools/tool_handle` and `/tools/blocks/block_handle/tool_handle`.
-     *
-     * @deprecated In a future major version this will be part of HTTP middleware
-     *
-     * @return Response|void Returns a response if an error occurs
-     */
-    protected function registerLegacyRoutes()
-    {
-        $router = $this->getRouter();
-        $router->register(
-            '/tools/blocks/{btHandle}/{tool}',
-            '\Concrete\Core\Legacy\Controller\ToolController::displayBlock',
-            'blockTool',
-            ['tool' => '[A-Za-z0-9_/.]+']
-        );
-        $router->register(
-            '/tools/{tool}',
-            '\Concrete\Core\Legacy\Controller\ToolController::display',
-            'tool',
-            ['tool' => '[A-Za-z0-9_/.]+']
-        );
     }
 
     /**
@@ -249,6 +230,19 @@ class DefaultRunner implements RunInterface, ApplicationAwareInterface
     protected function setupPackages()
     {
         $this->app->setupPackages();
+    }
+
+    /**
+     * Pre-load class aliases
+     * This is needed to avoid the problem of calling functions that accept a class alias as a parameter,
+     * but that alias isn't still auto-loaded. For example, that would result in the following error:
+     * Argument 1 passed to functionName() must be an instance of Area, instance of Concrete\Core\Area\Area given.
+     *
+     * @deprecated Don't use this method: it will be removed in future concrete5 versions
+     */
+    protected function preloadClassAliases()
+    {
+        ClassAliasList::getInstance()->resolveRequired();
     }
 
     /**
@@ -384,7 +378,7 @@ class DefaultRunner implements RunInterface, ApplicationAwareInterface
      *
      * @deprecated In a future major version this will be part of HTTP middleware
      *
-     * @return RouterInterface
+     * @return Router
      */
     protected function getRouter()
     {
@@ -398,11 +392,11 @@ class DefaultRunner implements RunInterface, ApplicationAwareInterface
     /**
      * Get the default router to use.
      *
-     * @return RouterInterface
+     * @return Router
      */
     private function getDefaultRouter()
     {
-        return $this->app->make(RouterInterface::class);
+        return $this->app->make('router');
     }
 
     /**
@@ -410,11 +404,11 @@ class DefaultRunner implements RunInterface, ApplicationAwareInterface
      *
      * @deprecated In a future major version this will be part of HTTP middleware
      *
-     * @param RouterInterface $router
+     * @param Router $router
      *
      * @return $this
      */
-    public function setRouter(RouterInterface $router)
+    public function setRouter(Router $router)
     {
         $this->router = $router;
 

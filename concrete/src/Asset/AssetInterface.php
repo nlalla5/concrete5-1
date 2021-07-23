@@ -36,6 +36,13 @@ interface AssetInterface
     const OUTPUTASSETTYPE_JAVASCRIPT = 'javascript';
 
     /**
+     * QueryString parameter to avoid browser cache problems.
+     *
+     * @var string
+     */
+    const OUTPUT_NOCACHE_PARAM = 'ccm_nocache';
+
+    /**
      * Render the HTML tag that will load this asset.
      *
      * @return string
@@ -97,34 +104,6 @@ interface AssetInterface
      * @return bool
      */
     public function isAssetLocal();
-
-    /**
-     * Does this asset support minification?
-     *
-     * @param bool $minify
-     */
-    public function setAssetSupportsMinification($minify);
-
-    /**
-     * Does this asset support minification?
-     *
-     * @return bool
-     */
-    public function assetSupportsMinification();
-
-    /**
-     * Can this asset be combined with other assets?
-     *
-     * @param bool $combine
-     */
-    public function setAssetSupportsCombination($combine);
-
-    /**
-     * Can this asset be combined with other assets?
-     *
-     * @return bool
-     */
-    public function assetSupportsCombination();
 
     /**
      * Set the URL of this asset.

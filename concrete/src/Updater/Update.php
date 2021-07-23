@@ -182,6 +182,10 @@ class Update
         $clearer->flush();
 
         $em = $app->make(EntityManagerInterface::class);
+        $cmf = $em->getMetadataFactory();
+        foreach (array_keys($cmf->getLoadedMetadata()) as $loadedClass) {
+            $cmf->setMetadataFor($loadedClass, null);
+        }
         $dbm = new DatabaseStructureManager($em);
         $dbm->destroyProxyClasses('ConcreteCore');
         $dbm->generateProxyClasses();
@@ -192,10 +196,11 @@ class Update
 
         $configuration->registerPreviousMigratedVersions();
         $isRerunning = $configuration->getForcedInitialMigration() !== null;
-        $migrations = $configuration->getMigrationsToExecute('up', $configuration->getLatestVersion());
-        $totalMigrations = count($migrations);
+        $migrationVersions = $configuration->getMigrationsToExecute('up', $configuration->getLatestVersion());
+        $totalMigrations = count($migrationVersions);
         $performedMigrations = 0;
-        foreach ($migrations as $migration) {
+        foreach ($migrationVersions as $migrationVersion) {
+            $migration = $migrationVersion->getMigration();
             if ($defaultTimeLimit !== 0) {
                 // The current execution time is not unlimited
                 $timeLimitSet = $canSetTimeLimit ? @set_time_limit(max((int) $defaultTimeLimit, 300)) : false;
@@ -207,22 +212,23 @@ class Update
                     }
                 }
             }
-            if ($isRerunning && $migration->isMigrated()) {
-                $migration->markNotMigrated();
+            $configuration->getOutputWriter()->write(t('** Executing migration: %s', $migrationVersion->getVersion()));
+            if ($isRerunning && $migrationVersion->isMigrated()) {
+                $migrationVersion->markNotMigrated();
                 $migrated = false;
                 try {
-                    $migration->execute('up');
+                    $migrationVersion->execute('up');
                     $migrated = true;
                 } finally {
                     if (!$migrated) {
                         try {
-                            $migration->markMigrated();
+                            $migrationVersion->markMigrated();
                         } catch (Exception $x) {
                         }
                     }
                 }
             } else {
-                $migration->execute('up');
+                $migrationVersion->execute('up');
             }
             ++$performedMigrations;
             if ($defaultTimeLimit !== 0 && !$timeLimitSet && $migration instanceof Migrations\LongRunningMigrationInterface) {
@@ -251,16 +257,15 @@ class Update
     {
         $app = Application::getFacadeApplication();
         $config = $app->make('config');
-        $client = $app->make('http/client')->setUri($config->get('concrete.updates.services.get_available_updates'));
-        $client->getRequest()
-            ->setMethod('POST')
-            ->getPost()
-                ->set('LOCALE', Localization::activeLocale())
-                ->set('BASE_URL_FU', Application::getApplicationURL())
-                ->set('APP_VERSION', APP_VERSION);
         try {
-            $response = $client->send();
-            $update = RemoteApplicationUpdateFactory::getFromJSON($response->getBody());
+            $response = $app->make('http/client')->post($config->get('concrete.updates.services.get_available_updates'),
+                ['form_params' => [
+                    'LOCALE' =>  Localization::activeLocale(),
+                    'BASE_URL_FULL' => (string) Application::getApplicationURL(),
+                    'APP_VERSION' => APP_VERSION
+                ]]
+            );
+            $update = RemoteApplicationUpdateFactory::getFromJSON($response->getBody()->getContents());
         } catch (Exception $x) {
             $update = null;
         }

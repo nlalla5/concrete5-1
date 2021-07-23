@@ -106,6 +106,11 @@ const DIRNAME_PAGE_TEMPLATES = 'page_templates';
 const DIRNAME_PAGE_THEME = 'page_theme';
 const DIRNAME_PAGE_THEME_CUSTOM = 'custom';
 const DIRNAME_ELEMENTS = 'elements';
+const DIRNAME_SUMMARY = 'summary';
+const DIRNAME_SUMMARY_TEMPLATES = 'templates';
+const DIRNAME_BOARDS = 'boards';
+const DIRNAME_BOARD_SLOTS = 'slots';
+const DIRNAME_CONTAINERS = 'containers';
 const DIRNAME_LANGUAGES = 'languages';
 const DIRNAME_JOBS = 'jobs';
 const DIRNAME_DASHBOARD = 'dashboard';
@@ -115,8 +120,6 @@ const DIRNAME_MAIL_TEMPLATES = 'mail';
 const DIRNAME_THEMES = 'themes';
 const DIRNAME_THEMES_CORE = 'core';
 const DIRNAME_CONFIG = 'config';
-const DIRNAME_TOOLS = 'tools';
-const DIRNAME_BLOCK_TOOLS = 'tools';
 const DIRNAME_BLOCK_TEMPLATES = 'templates';
 const DIRNAME_BLOCK_TEMPLATES_COMPOSER = 'composer';
 const DIRNAME_CSS = 'css';
@@ -153,6 +156,7 @@ const DIRNAME_STYLE_CUSTOMIZER = 'style_customizer';
 const DIRNAME_STYLE_CUSTOMIZER_TYPES = 'types';
 const DIRNAME_STYLE_CUSTOMIZER_PRESETS = 'presets';
 const DIRNAME_FILE_STORAGE_LOCATION_TYPES = 'storage_location_types';
+const DIRNAME_EXTERNAL_FILE_PROVIDER_TYPES = 'external_file_provider_types';
 const DIRNAME_EXPRESS = 'express';
 const DIRNAME_EXPRESS_VIEW_CONTROLS = 'view';
 const DIRNAME_EXPRESS_CONTROL_OPTIONS = 'control';
@@ -162,6 +166,7 @@ const DIRNAME_EXPRESS_FORM_CONTROLS_ASSOCIATION = 'association';
 const DIRNAME_METADATA_XML = 'xml';
 const DIRNAME_METADATA_YAML = 'yaml';
 const DIRNAME_GEOLOCATION = 'geolocation';
+const DIRNAME_ROUTES = 'routes';
 const REL_DIR_FILES_INCOMING = '/incoming';
 const REL_DIR_FILES_THUMBNAILS = '/thumbnails';
 define('REL_DIR_METADATA_XML', DIRNAME_CONFIG . '/' . DIRNAME_METADATA_XML);
@@ -233,8 +238,6 @@ define('DIR_BASE_CORE', str_replace(DIRECTORY_SEPARATOR, '/', realpath(dirname(_
 define('DIR_PACKAGES', DIR_BASE . '/packages');
 define('DIR_FILES_BLOCK_TYPES', DIR_APPLICATION . '/' . DIRNAME_BLOCKS);
 define('DIR_FILES_BLOCK_TYPES_CORE', DIR_BASE_CORE . '/' . DIRNAME_BLOCKS);
-define('DIR_FILES_TOOLS', DIR_APPLICATION . '/tools');
-define('DIR_FILES_TOOLS_REQUIRED', DIR_BASE_CORE . '/tools');
 define('DIR_PACKAGES_CORE', DIR_BASE_CORE . '/packages');
 defined('DIR_STARTING_POINT_PACKAGES') or define('DIR_STARTING_POINT_PACKAGES', DIR_CONFIG_SITE . '/install/packages');
 define('DIR_STARTING_POINT_PACKAGES_CORE', DIR_BASE_CORE . '/config/install/packages');
@@ -262,6 +265,7 @@ define('DIR_FILES_BLOCK_TYPES_FORMS_EXTERNAL_PROCESS_CORE', DIR_FILES_BLOCK_TYPE
 define('DIR_FILES_UPLOADED_STANDARD', DIR_APPLICATION . '/files');
 define('DIR_AL_ICONS', DIR_BASE_CORE . '/images/icons/filetypes');
 define('DIR_LANGUAGES_SITE_INTERFACE', DIR_LANGUAGES . '/' . DIRNAME_LANGUAGES_SITE_INTERFACE);
+define('DIR_CORE_CONFIG', DIR_BASE_CORE . '/config');
 
 /*
  * ----------------------------------------------------------------------------
@@ -269,6 +273,8 @@ define('DIR_LANGUAGES_SITE_INTERFACE', DIR_LANGUAGES . '/' . DIRNAME_LANGUAGES_S
  * ----------------------------------------------------------------------------
  */
 const BLOCK_HANDLE_SCRAPBOOK_PROXY = 'core_scrapbook_display';
+const BLOCK_HANDLE_CONTAINER_PROXY = 'core_container';
+const BLOCK_HANDLE_BOARD_SLOT_PROXY = 'core_board_slot';
 const BLOCK_HANDLE_LAYOUT_PROXY = 'core_area_layout';
 const BLOCK_HANDLE_PAGE_TYPE_OUTPUT_PROXY = 'core_page_type_composer_control_output';
 const BLOCK_HANDLE_STACK_PROXY = 'core_stack_display';
@@ -304,6 +310,12 @@ const USER_SUPER_ID = 1;
 const GUEST_GROUP_ID = '1';
 const REGISTERED_GROUP_ID = '2';
 const ADMIN_GROUP_ID = '3';
+const DEFAULT_GROUP_TYPE_ID = '1';
+const DEFAULT_GROUP_ROLE_ID = '1';
+
+/**
+ * @deprecated Use Config::get('concrete.session.remember_me.lifetime')
+ */
 const USER_FOREVER_COOKIE_LIFETIME = 1209600; // 14 days
 const USER_CHANGE_PASSWORD_URL_LIFETIME = 7200;
 const ONLINE_NOW_TIMEOUT = 300;
@@ -326,11 +338,13 @@ const HOME_HANDLE = 'home';
 const COLLECTION_NOT_FOUND = 10;
 const COLLECTION_INIT = 11;
 const COLLECTION_FORBIDDEN = 12;
+const VERSION_NOT_FOUND = 10;
 const VERSION_NOT_RECENT = 50;
 const USER_INVALID = 20;
 const USER_INACTIVE = 21;
 const USER_NON_VALIDATED = 22;
 const USER_SESSION_EXPIRED = 23;
+const USER_PASSWORD_RESET = 24;
 const COLLECTION_MASTER_UNAUTH = 30;
 const COLLECTION_PRIVATE = 40;
 const BLOCK_NOT_AVAILABLE = 50;
@@ -340,6 +354,8 @@ defined('DEFAULT_ERROR_REPORTING') or define('DEFAULT_ERROR_REPORTING', E_ALL & 
 const DEBUG_DISPLAY_PRODUCTION = 0;
 const DEBUG_DISPLAY_ERRORS = 1;
 const DEBUG_DISPLAY_ERRORS_SQL = 2; // not used
+
+/* -- Deprecated - use the Channels class instead */
 const LOG_TYPE_EMAILS = 'sent_emails';
 const LOG_TYPE_EXCEPTIONS = 'exceptions';
 

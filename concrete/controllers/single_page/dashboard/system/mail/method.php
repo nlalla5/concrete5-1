@@ -14,6 +14,7 @@ class Method extends DashboardPageController
     {
         if ($this->token->validate('save_settings')) {
             $config = $this->app->make('config');
+            $config->save('concrete.email.enabled', (bool) $this->post('EMAIL_ENABLED'));
             $config->save('concrete.mail.method', strtolower($this->post('MAIL_SEND_METHOD')));
             if ($this->post('MAIL_SEND_METHOD') == 'SMTP') {
                 $config->save('concrete.mail.methods.smtp.server', $this->post('MAIL_SEND_METHOD_SMTP_SERVER'));
@@ -23,6 +24,7 @@ class Method extends DashboardPageController
                 $config->save('concrete.mail.methods.smtp.encryption', $this->post('MAIL_SEND_METHOD_SMTP_ENCRYPTION'));
                 $messages_per_connection = (int) $this->post('MAIL_SEND_METHOD_SMTP_MESSAGES_PER_CONNECTION');
                 $config->save('concrete.mail.methods.smtp.messages_per_connection', $messages_per_connection > 0 ? $messages_per_connection : null);
+                $config->save('concrete.mail.methods.smtp.helo_domain', (string) $this->post('MAIL_SEND_METHOD_SMTP_HELO_DOMAIN'));
             } else {
                 $config->clear('concrete.mail.methods.smtp.server');
                 $config->clear('concrete.mail.methods.smtp.username');

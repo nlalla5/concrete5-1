@@ -1,7 +1,10 @@
 <?php
 namespace Concrete\Core\Workflow\Request;
 
+use Concrete\Core\Entity\User\User;
+use Concrete\Core\User\Event\DeactivateUser;
 use Concrete\Core\User\UserInfo;
+use Doctrine\ORM\EntityManager;
 use PermissionKey;
 use Loader;
 use Config;
@@ -102,7 +105,17 @@ class ActivateUserRequest extends UserRequest
                 'deactivated'
             ]);
             $wpr->setWorkflowProgressResponseURL($url);
+
+            $em = $app->make(EntityManager::class);
+            $requested = $em->find(User::class, $this->getRequestedUserID());
+            $requester = $em->find(User::class, $this->getRequesterUserID());
+
+            $event = DeactivateUser::create($requested, $requester);
+            $director = $app->make('director');
+
+            $director->dispatch('on_before_user_deactivate', $event);
             $ui->deactivate();
+            $director->dispatch('on_after_user_deactivate', $event);
         } else {
             $wpr->message = t("User %s has been activated.", $ui->getUserName());
             $url = (string) $urlm->resolve([
@@ -123,7 +136,12 @@ class ActivateUserRequest extends UserRequest
         $mh = Loader::helper('mail');
         $mh->to($ui->getUserEmail());
         if (Config::get('concrete.email.register_notification.address')) {
-            $mh->from(Config::get('concrete.email.register_notification.address'), t('Website Registration Notification'));
+            if (Config::get('concrete.email.register_notification.name')) {
+                $fromName = Config::get('concrete.email.register_notification.name');
+            } else {
+                $fromName = t('Website Registration Notification');
+            }
+            $mh->from(Config::get('concrete.email.register_notification.address'), $fromName);
         } else {
             $adminUser = UserInfo::getByID(USER_SUPER_ID);
             $mh->from($adminUser->getUserEmail(), t('Website Registration Notification'));
@@ -186,7 +204,7 @@ class ActivateUserRequest extends UserRequest
         $button->addWorkflowProgressActionButtonParameter('dialog-title', t('User Details'));
         $button->addWorkflowProgressActionButtonParameter('dialog-width', '420');
         $button->addWorkflowProgressActionButtonParameter('dialog-height', '310');
-        $button->setWorkflowProgressActionURL(REL_DIR_FILES_TOOLS_REQUIRED . '/workflow/dialogs/user_details?uID=' . $this->getRequestedUserID());
+        $button->setWorkflowProgressActionURL(\URL::to('/ccm/system/dialogs/user/details') . '?uID=' . $this->getRequestedUserID());
         $button->setWorkflowProgressActionStyleClass('dialog-launch');
         $buttons[] = $button;
 

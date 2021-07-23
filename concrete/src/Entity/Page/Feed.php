@@ -4,11 +4,13 @@ namespace Concrete\Core\Entity\Page;
 use Concrete\Core\Block\View\BlockView;
 use Concrete\Core\Html\Object\HeadLink;
 use Concrete\Core\Http\Request;
+use Concrete\Core\Page\FeedEvent;
 use Concrete\Core\Page\PageList;
 use Concrete\Core\Page\Page;
 use Concrete\Core\Permission\Access\Entity\GroupEntity;
+use Concrete\Core\Site\Resolver\Resolver;
+use Concrete\Core\Support\Facade\Application;
 use Doctrine\ORM\Mapping as ORM;
-use Concrete\Core\Page\FeedEvent;
 
 /**
  * @ORM\Entity
@@ -17,6 +19,11 @@ use Concrete\Core\Page\FeedEvent;
 class Feed
 {
     protected $itemsPerFeed = 20;
+
+    /**
+     * @var bool
+     * @ORM\Column(type="boolean")
+     */
     protected $checkPagePermissions = true;
 
     /**
@@ -156,6 +163,7 @@ class Feed
 
     /**
      * @param string $format
+     *
      * @return string
      */
     public function getFeedDisplayTitle($format = 'html')
@@ -311,6 +319,7 @@ class Feed
     {
         return \URL::to('/rss/' . $this->getHandle());
     }
+
     /**
      * @ORM\Column(type="boolean")
      */
@@ -333,6 +342,22 @@ class Feed
     public function ignorePermissions()
     {
         $this->checkPagePermissions = false;
+    }
+
+    /**
+     * @param bool $checkPagePermissions
+     */
+    public function setCheckPagePermissions($checkPagePermissions)
+    {
+        $this->checkPagePermissions = (bool) $checkPagePermissions;
+    }
+
+    /**
+     * @return bool
+     */
+    public function shouldCheckPagePermissions()
+    {
+        return $this->checkPagePermissions;
     }
 
     /**
@@ -361,15 +386,23 @@ class Feed
                 return $pa->validateAccessEntities([$access]);
             });
         }
+        $parent = null;
         if ($this->cParentID) {
+            $parent = \Page::getByID($this->cParentID);
+            if (!is_object($parent) || $parent->isError()) {
+                $parent = null;
+            }
+        }
+        if ($parent !== null) {
+            $pl->setSiteTreeObject($parent->getSiteTreeObject());
             if ($this->pfIncludeAllDescendents) {
-                $parent = \Page::getByID($this->cParentID);
-                if (is_object($parent) && !$parent->isError()) {
-                    $pl->filterByPath($parent->getCollectionPath());
-                }
+                $pl->filterByPath($parent->getCollectionPath());
             } else {
                 $pl->filterByParentID($this->cParentID);
             }
+        } else {
+            $app = Application::getFacadeApplication();
+            $pl->filterBySite($app->make(Resolver::class)->getSite());
         }
         if ($this->getCustomTopicAttributeKeyHandle()) {
             $pl->filterByTopic(intval($this->getCustomTopicTreeNodeID()));

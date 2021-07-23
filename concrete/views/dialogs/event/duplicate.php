@@ -4,7 +4,7 @@
 <div class="ccm-ui">
     <form method="post" data-dialog-form="duplicate-event" action="<?= $controller->action('submit') ?>">
 
-        <h4><?=$event->getName()?></h4>
+        <h4><?= h($event->getName()) ?></h4>
         <?= $event->getDescription() ?>
 
         <hr/>
@@ -23,9 +23,9 @@
         <?php } ?>
 
         <div class="dialog-buttons">
-            <button class="btn btn-default pull-left" data-dialog-action="cancel"><?= t('Cancel') ?></button>
+            <button class="btn btn-secondary float-left" data-dialog-action="cancel"><?= t('Cancel') ?></button>
             <button type="button" data-dialog-action="submit"
-                    class="btn btn-primary pull-right"><?= t('Duplicate Event') ?></button>
+                    class="btn btn-primary float-right"><?= t('Duplicate Event') ?></button>
         </div>
 
 

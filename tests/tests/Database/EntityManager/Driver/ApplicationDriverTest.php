@@ -5,7 +5,7 @@ namespace Concrete\Tests\Database\EntityManager\Driver;
 use Concrete\Core\Database\EntityManager\Driver\ApplicationDriver;
 use Concrete\Core\Support\Facade\Application;
 use Illuminate\Filesystem\Filesystem;
-use PHPUnit_Framework_TestCase;
+use Concrete\Tests\TestCase;
 
 /**
  * ApplicationDriverTest.
@@ -13,7 +13,7 @@ use PHPUnit_Framework_TestCase;
  * @author Markus Liechti <markus@liechti.io>
  * @group orm_setup
  */
-class ApplicationDriverTest extends PHPUnit_Framework_TestCase
+class ApplicationDriverTest extends TestCase
 {
     /**
      * @var \Concrete\Core\Application\Application
@@ -56,7 +56,7 @@ class ApplicationDriverTest extends PHPUnit_Framework_TestCase
      * - empty CONFIG_ORM_METADATA_APPLICATION config setting
      * - a present application/src/Entity folder.
      *
-     * @covers ApplicationDriver::getDriver
+     * @covers \Concrete\Core\Database\EntityManager\Driver\ApplicationDriver::getDriver
      *
      * @throws \Exception
      */
@@ -84,7 +84,7 @@ class ApplicationDriverTest extends PHPUnit_Framework_TestCase
     /**
      * Test default application driver with no folder at application/src/Entity.
      *
-     * @covers ApplicationDriver::getDriver
+     * @covers \Concrete\Core\Database\EntityManager\Driver\ApplicationDriver::getDriver
      */
     public function testFailingGetDefaultDriverWithNoEntityDirectory()
     {
@@ -100,7 +100,7 @@ class ApplicationDriverTest extends PHPUnit_Framework_TestCase
      * - a present application/src folder
      * - and config 'app.enable_legacy_src_namespace' = true.
      *
-     * @covers ApplicationDriver::getDriver
+     * @covers \Concrete\Core\Database\EntityManager\Driver\ApplicationDriver::getDriver
      *
      * @throws \Exception
      */
@@ -129,7 +129,7 @@ class ApplicationDriverTest extends PHPUnit_Framework_TestCase
      * - a existing application/src/Entity folder
      * - a existing application/config/xml.
      *
-     * @covers ApplicationDriver::getDriver
+     * @covers \Concrete\Core\Database\EntityManager\Driver\ApplicationDriver::getDriver
      *
      * @throws \Exception
      */
@@ -162,7 +162,7 @@ class ApplicationDriverTest extends PHPUnit_Framework_TestCase
     /**
      * Failing test for XMLDriver with missing application/config/xml directory.
      *
-     * @covers ApplicationDriver::getDriver
+     * @covers \Concrete\Core\Database\EntityManager\Driver\ApplicationDriver::getDriver
      */
     public function testFailingGetXMLDriverWithNoConfigXMLDirectory()
     {
@@ -185,7 +185,7 @@ class ApplicationDriverTest extends PHPUnit_Framework_TestCase
      * - a existing application/config/yaml.
      *
      * @dataProvider dataProviderTestGetYMLDriver
-     * @covers ApplicationDriver::getDriver
+     * @covers \Concrete\Core\Database\EntityManager\Driver\ApplicationDriver::getDriver
      *
      * @param string $setting
      *
@@ -221,7 +221,7 @@ class ApplicationDriverTest extends PHPUnit_Framework_TestCase
      * Failing test for XMLDriver with missing application/config/yaml directory.
      *
      * @dataProvider dataProviderTestGetYMLDriver
-     * @covers ApplicationDriver::getDriver
+     * @covers \Concrete\Core\Database\EntityManager\Driver\ApplicationDriver::getDriver
      *
      * @param string $setting
      */
@@ -256,7 +256,7 @@ class ApplicationDriverTest extends PHPUnit_Framework_TestCase
      * Test namespace.
      *
      * @dataProvider dataProviderGetNamespace
-     * @covers ApplicationDriver::getNamespace
+     * @covers \Concrete\Core\Database\EntityManager\Driver\ApplicationDriver::getNamespace
      *
      * @param bool $isLegacy
      * @param string $namespace
@@ -318,7 +318,7 @@ class ApplicationDriverTest extends PHPUnit_Framework_TestCase
      *
      * @param \Exception $e
      */
-    protected function onNotSuccessfulTest(\Exception $e)
+    protected function onNotSuccessfulTest($e)
     {
         $this->cleanupFolderSystem();
         $this->cleanupConfig();

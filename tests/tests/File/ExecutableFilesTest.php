@@ -2,9 +2,9 @@
 
 namespace Concrete\Tests\File;
 
-use PHPUnit_Framework_TestCase;
+use Concrete\Tests\TestCase;
 
-class ExecutableFilesTest extends PHPUnit_Framework_TestCase
+class ExecutableFilesTest extends TestCase
 {
     public function testExecutableFiles()
     {
@@ -23,11 +23,14 @@ class ExecutableFilesTest extends PHPUnit_Framework_TestCase
                 && strpos($file, 'concrete/vendor/') !== 0
                 && strpos($file, 'packages/') !== 0
                 && strpos($file, 'updates/') !== 0
+                && strpos($file, '.travis/') !== 0
             ;
         });
         sort($actual);
         $expected = [
             'concrete/bin/concrete5',
+            'tests/assets/Docker/run-install.sh',
+            'tests/assets/Docker/run-update.sh',
         ];
         $this->assertSame(
             $expected,

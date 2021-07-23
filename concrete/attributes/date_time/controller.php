@@ -24,7 +24,7 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
 
     public function getIconFormatter()
     {
-        return new FontAwesomeIconFormatter('clock-o');
+        return new FontAwesomeIconFormatter('clock');
     }
 
     public function saveKey($data)
@@ -242,7 +242,12 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
 
     public function getPlainTextValue()
     {
-        return $this->getDisplayValue();
+        $datetime = $this->getDateTime();
+        if ($datetime !== null) {
+            $dh = $this->app->make('helper/date');
+            return $dh->formatCustom(\DateTime::ATOM, $datetime);
+        }
+        return '';
     }
 
     /**
@@ -268,14 +273,22 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
                     if ($this->akTextCustomFormat === '') {
                         $result = $dh->formatDate($datetime, 'short', $datetime->getTimezone());
                     } else {
-                        $result = $dh->formatCustom($this->akTextCustomFormat, $datetime, $datetime->getTimezone());
+                        try {
+                            $result = $dh->formatCustom($this->akTextCustomFormat, $datetime, $datetime->getTimezone());
+                        } catch (\Punic\Exception $e) {
+                            $result = $dh->formatDate($datetime, 'short', $datetime->getTimezone());
+                        }
                     }
                     break;
                 case 'text':
                     if ($this->akTextCustomFormat === '') {
                         $result = $dh->formatDateTime($datetime);
                     } else {
-                        $result = $dh->formatCustom($this->akTextCustomFormat, $datetime);
+                        try {
+                            $result = $dh->formatCustom($this->akTextCustomFormat, $datetime);
+                        } catch (\Punic\Exception $e) {
+                            $result = $dh->formatDateTime($datetime);
+                        }
                     }
                     break;
                 case 'date_time':

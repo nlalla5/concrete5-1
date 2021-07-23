@@ -3,10 +3,11 @@ namespace Concrete\Core\Package;
 
 use AuthenticationType;
 use Concrete\Block\ExpressForm\Controller as ExpressFormBlockController;
+use Concrete\Core\Api\OAuth\Scope\ScopeRegistryInterface;
 use Concrete\Core\Backup\ContentImporter;
 use Concrete\Core\Config\Renderer;
 use Concrete\Core\Database\DatabaseStructureManager;
-use Concrete\Core\Entity\Site\Locale;
+use Concrete\Core\Entity\OAuth\Scope;
 use Concrete\Core\File\Filesystem;
 use Concrete\Core\File\Service\File;
 use Concrete\Core\Localization\Localization;
@@ -16,11 +17,10 @@ use Concrete\Core\Permission\Access\Access as PermissionAccess;
 use Concrete\Core\Permission\Access\Entity\ConversationMessageAuthorEntity;
 use Concrete\Core\Permission\Access\Entity\GroupEntity as GroupPermissionAccessEntity;
 use Concrete\Core\Permission\Access\Entity\UserEntity;
-use Concrete\Core\Tree\Node\Type\Category;
 use Concrete\Core\Tree\Node\Type\ExpressEntryCategory;
 use Concrete\Core\Tree\Type\ExpressEntryResults;
 use Concrete\Core\Updater\Migrations\Configuration;
-use Concrete\Core\User\Point\Action\Action as UserPointAction;
+use Concrete\Core\User\Group\FolderManager;
 use Config;
 use Core;
 use Database;
@@ -29,18 +29,18 @@ use Doctrine\ORM\Tools\Setup;
 use Exception;
 use Group;
 use GroupTree;
-use Hautelook\Phpass\PasswordHash;
+use League\OAuth2\Server\Repositories\ScopeRepositoryInterface;
 use Package as BasePackage;
 use Page;
 use PermissionKey;
 use Throwable;
-use User;
+use Concrete\Core\User\User;
 use UserInfo;
 use Concrete\Core\Install\InstallerOptions;
 use Concrete\Core\Foundation\Environment\FunctionInspector;
 use Concrete\Core\Application\Application;
 
-class StartingPointPackage extends BasePackage
+class StartingPointPackage extends Package
 {
     protected $DIR_PACKAGES_CORE = DIR_STARTING_POINT_PACKAGES_CORE;
     protected $DIR_PACKAGES = DIR_STARTING_POINT_PACKAGES;
@@ -58,33 +58,35 @@ class StartingPointPackage extends BasePackage
     {
         parent::__construct($app);
         $this->routines = [
-            new StartingPointInstallRoutine(
-                'make_directories',
-                5,
-                t('Starting installation and creating directories.')),
-            new StartingPointInstallRoutine('install_database', 10, t('Creating database tables.')),
-            new StartingPointInstallRoutine('install_site', 12, t('Creating site.')),
-            new StartingPointInstallRoutine('add_users', 15, t('Adding admin user.')),
-            new StartingPointInstallRoutine('install_permissions', 20, t('Installing permissions & workflow.')),
+            new StartingPointInstallRoutine('make_directories', 5, t('Starting installation and creating directories.')),
+            new StartingPointInstallRoutine('install_database', 19, t('Creating database tables.')),
+            new StartingPointInstallRoutine('install_site', 20, t('Creating site.')),
+            new StartingPointInstallRoutine('add_users', 21, t('Adding admin user.')),
+            new StartingPointInstallRoutine('install_permissions', 22, t('Installing permissions & workflow.')),
             new StartingPointInstallRoutine('install_data_objects', 23, t('Installing Custom Data Objects.')),
-            new StartingPointInstallRoutine('add_home_page', 26, t('Creating home page.')),
-            new StartingPointInstallRoutine('install_attributes', 30, t('Installing attributes.')),
-            new StartingPointInstallRoutine('install_blocktypes', 35, t('Adding block types.')),
-            new StartingPointInstallRoutine('install_gathering', 39, t('Adding gathering data sources.')),
-            new StartingPointInstallRoutine('install_page_types', 40, t('Page type basic setup.')),
-            new StartingPointInstallRoutine('install_themes', 45, t('Adding themes.')),
-            new StartingPointInstallRoutine('install_jobs', 47, t('Installing automated jobs.')),
-            new StartingPointInstallRoutine('install_dashboard', 50, t('Installing dashboard.')),
-            new StartingPointInstallRoutine(
-                'install_required_single_pages',
-                55,
-                t('Installing login and registration pages.')),
-            new StartingPointInstallRoutine('install_image_editor', 57, t('Adding image editor functionality.')),
-            new StartingPointInstallRoutine('install_config', 60, t('Configuring site.')),
-            new StartingPointInstallRoutine('import_files', 65, t('Importing files.')),
-            new StartingPointInstallRoutine('install_content', 70, t('Adding pages and content.')),
-            new StartingPointInstallRoutine('install_desktops', 85, t('Adding desktops.')),
-            new StartingPointInstallRoutine('install_site_permissions', 90, t('Setting site permissions.')),
+            new StartingPointInstallRoutine('add_home_page', 24, t('Creating home page.')),
+            new StartingPointInstallRoutine('install_attributes', 25, t('Installing attributes.')),
+            new StartingPointInstallRoutine('install_blocktypes_basic', 38, t('Adding Basic block types.')),
+            new StartingPointInstallRoutine('install_blocktypes_navigation', 42, t('Adding Navigation block types.')),
+            new StartingPointInstallRoutine('install_blocktypes_form', 45, t('Adding Form block types.')),
+            new StartingPointInstallRoutine('install_blocktypes_express', 48, t('Adding Express block types.')),
+            new StartingPointInstallRoutine('install_blocktypes_social', 51, t('Adding Social block types.')),
+            new StartingPointInstallRoutine('install_blocktypes_calendar', 54, t('Adding Calendar block types.')),
+            new StartingPointInstallRoutine('install_blocktypes_multimedia', 57, t('Adding Multimedia block types.')),
+            new StartingPointInstallRoutine('install_blocktypes_core_desktop', 61, t('Adding Desktop block types.')),
+            new StartingPointInstallRoutine('install_blocktypes_other', 64, t('Adding other block types.')),
+            new StartingPointInstallRoutine('install_boards', 66, t('Adding boards.')),
+            new StartingPointInstallRoutine('install_page_types', 67, t('Page type basic setup.')),
+            new StartingPointInstallRoutine('install_themes', 68, t('Adding themes.')),
+            new StartingPointInstallRoutine('install_jobs', 69, t('Installing automated jobs.')),
+            new StartingPointInstallRoutine('install_dashboard', 78, t('Installing dashboard.')),
+            new StartingPointInstallRoutine('install_required_single_pages', 79, t('Installing login and registration pages.')),
+            new StartingPointInstallRoutine('install_config', 81, t('Configuring site.')),
+            new StartingPointInstallRoutine('import_files', 82, t('Importing files.')),
+            new StartingPointInstallRoutine('install_content', 83, t('Adding pages and content.')),
+            new StartingPointInstallRoutine('install_desktops', 92, t('Adding desktops.')),
+            new StartingPointInstallRoutine('install_api', 93, t('Installing API.')),
+            new StartingPointInstallRoutine('install_site_permissions', 94, t('Setting site permissions.')),
             new AttachModeInstallRoutine('finish', 95, t('Finishing.')),
         ];
     }
@@ -201,6 +203,7 @@ class StartingPointPackage extends BasePackage
         \Concrete\Core\Tree\Node\NodeType::add('express_entry_category');
         \Concrete\Core\Tree\TreeType::add('express_entry_results');
         \Concrete\Core\Tree\Node\NodeType::add('express_entry_results');
+        \Concrete\Core\Tree\Node\NodeType::add('express_entry_site_results');
 
         $tree = ExpressEntryResults::add();
         $node = $tree->getRootTreeNodeObject();
@@ -237,10 +240,10 @@ class StartingPointPackage extends BasePackage
         $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/single_pages/dashboard.xml');
     }
 
-    protected function install_gathering()
+    protected function install_boards()
     {
         $ci = new ContentImporter();
-        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/gathering.xml');
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/boards.xml');
     }
 
     protected function install_page_types()
@@ -256,21 +259,82 @@ class StartingPointPackage extends BasePackage
         $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/single_pages/root.xml');
     }
 
-    protected function install_image_editor()
-    {
-        $ci = new ContentImporter();
-        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/image_editor.xml');
-    }
-
+    /**
+     * @deprecated This method has been splitted in smaller chunks
+     */
     protected function install_blocktypes()
     {
         $ci = new ContentImporter();
-        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes.xml');
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_basic.xml');
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_navigation.xml');
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_form.xml');
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_express.xml');
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_social.xml');
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_calendar.xml');
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_multimedia.xml');
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_core_desktop.xml');
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_other.xml');
+    }
+
+    protected function install_blocktypes_basic()
+    {
+        $ci = new ContentImporter();
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_basic.xml');
+    }
+
+    protected function install_blocktypes_navigation()
+    {
+        $ci = new ContentImporter();
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_navigation.xml');
+    }
+
+    protected function install_blocktypes_form()
+    {
+        $ci = new ContentImporter();
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_form.xml');
+    }
+
+    protected function install_blocktypes_express()
+    {
+        $ci = new ContentImporter();
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_express.xml');
+    }
+
+    protected function install_blocktypes_social()
+    {
+        $ci = new ContentImporter();
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_social.xml');
+    }
+
+    protected function install_blocktypes_calendar()
+    {
+        $ci = new ContentImporter();
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_calendar.xml');
+    }
+
+    protected function install_blocktypes_multimedia()
+    {
+        $ci = new ContentImporter();
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_multimedia.xml');
+    }
+
+    protected function install_blocktypes_core_desktop()
+    {
+        $ci = new ContentImporter();
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_core_desktop.xml');
+    }
+
+    protected function install_blocktypes_other()
+    {
+        $ci = new ContentImporter();
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/blocktypes_other.xml');
     }
 
     protected function install_themes()
     {
         $ci = new ContentImporter();
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/summary.xml');
+        $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/containers.xml');
         $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/themes.xml');
         if (file_exists($this->getPackagePath() . '/themes.xml')) {
             $ci->importContentFile($this->getPackagePath() . '/themes.xml');
@@ -342,6 +406,16 @@ class StartingPointPackage extends BasePackage
         $desktop->movePageDisplayOrderToTop();
     }
 
+    protected function install_api()
+    {
+        $scopes = $this->app->make(ScopeRegistryInterface::class)->getScopes();
+        $em = $this->app->make(EntityManager::class);
+        foreach ($scopes as $scope) {
+            $em->persist($scope);
+            $em->flush();
+        }
+    }
+
     protected function install_database()
     {
         $db = Database::get();
@@ -381,7 +455,7 @@ class StartingPointPackage extends BasePackage
             $version->markMigrated();
             $configuration->registerPreviousMigratedVersions();
         } catch (\Exception $e) {
-            throw new \Exception(t('Unable to install database: %s', $db->ErrorMsg() ? $db->ErrorMsg() : $e->getMessage()));
+            throw new \Exception(t('Unable to install database: %s', $e->getMessage()));
         }
     }
 
@@ -401,11 +475,13 @@ class StartingPointPackage extends BasePackage
         $fba = AuthenticationType::add('facebook', 'Facebook');
         $twa = AuthenticationType::add('twitter', 'Twitter');
         $gat = AuthenticationType::add('google', 'Google');
+        $ext = AuthenticationType::add('external_concrete5', 'External concrete5');
 
         $fba->disable();
         $twa->disable();
         $coa->disable();
         $gat->disable();
+        $ext->disable();
 
         \Concrete\Core\Tree\TreeType::add('group');
         \Concrete\Core\Tree\Node\NodeType::add('group');
@@ -433,12 +509,22 @@ class StartingPointPackage extends BasePackage
         $u = User::getByUserID(USER_SUPER_ID, true, false);
 
         MailImporter::add(['miHandle' => 'private_message']);
-        UserPointAction::add('won_badge', t('Won a Badge'), 5, false, true);
 
         // Install conversation default email
         \Conversation::setDefaultSubscribedUsers([$superuser]);
         $ci = new ContentImporter();
         $ci->importContentFile(DIR_BASE_CORE . '/config/install/base/conversation.xml');
+
+        $folderManager = new FolderManager();
+        $folderManager->create();
+
+        // Add Group Type + Default Role and assign them to the groups
+        $db = Database::get();
+        $db->executeQuery('insert into GroupTypes (gtID, gtName, gtDefaultRoleID) values (?,?, ?)', [DEFAULT_GROUP_TYPE_ID, t("Group"), DEFAULT_GROUP_ROLE_ID]);
+        $db->executeQuery('insert into GroupRoles (grID, grName) values (?,?)', [DEFAULT_GROUP_ROLE_ID, t("Member")]);
+        $db->executeQuery('insert into GroupTypeSelectedRoles (gtID, grID) values (?,?)', [DEFAULT_GROUP_TYPE_ID, DEFAULT_GROUP_ROLE_ID]);
+        $db->executeQuery('update `Groups` set gtID = ?, gDefaultRoleID = ?', [DEFAULT_GROUP_TYPE_ID, DEFAULT_GROUP_ROLE_ID]);
+        $db->executeQuery('update UserGroups set grID = ?', [DEFAULT_GROUP_ROLE_ID]);
     }
 
     protected function make_directories()
@@ -486,11 +572,11 @@ class StartingPointPackage extends BasePackage
             $siteConfig->save('seo.canonical_url', $installConfiguration['canonical-url']);
         }
         unset($installConfiguration['canonical-url']);
-        if (isset($site_install['canonical-url-alternative']) && $site_install['canonical-url-alternative']) {
-            $siteConfig->save('seo.canonical_url_alternative', $site_install['canonical-url-alternative']);
+        if (isset($installConfiguration['canonical-url-alternative']) && $installConfiguration['canonical-url-alternative']) {
+            $siteConfig->save('seo.canonical_url_alternative', $installConfiguration['canonical-url-alternative']);
         }
         unset($installConfiguration['canonical-url-alternative']);
-        
+
         if (isset($installConfiguration['session-handler']) && $installConfiguration['session-handler']) {
             $config->save('concrete.session.handler', $installConfiguration['session-handler']);
         }
@@ -604,7 +690,7 @@ class StartingPointPackage extends BasePackage
             ]
         );
 
-        $home = Page::getByID(1, 'RECENT');
+        $home = Page::getByID(Page::getHomePageID(), 'RECENT');
         $home->assignPermissions($g1, ['view_page']);
         $home->assignPermissions(
             $g3,

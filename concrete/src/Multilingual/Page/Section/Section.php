@@ -1,6 +1,8 @@
 <?php
 namespace Concrete\Core\Multilingual\Page\Section;
 
+use Concrete\Core\Support\Facade\Application;
+use Concrete\Core\Cache\Level\RequestCache;
 use Concrete\Core\Entity\Site\Locale;
 use Concrete\Core\Entity\Site\Site;
 use Concrete\Core\Entity\Site\SiteTree;
@@ -31,12 +33,29 @@ class Section extends Page
 
     protected static function getLocaleFromHomePageID($cID)
     {
-        $em = Database::get()->getEntityManager();
-        $tree = $em->getRepository('Concrete\Core\Entity\Site\SiteTree')
-            ->findOneBySiteHomePageID($cID);
-        if (is_object($tree)) {
-            return $em->getRepository('Concrete\Core\Entity\Site\Locale')
-                ->findOneByTree($tree);
+        if ($cID) {
+            $cache = Application::getFacadeApplication()->make(RequestCache::class);
+            $item = $cache->getItem('section_locale_from_homepage_id/' .  $cID);
+            
+            if ($item->isMiss() === true) {
+                $item->lock();
+                
+                $em = Database::get()->getEntityManager();
+                $tree = $em->getRepository('Concrete\Core\Entity\Site\SiteTree')
+                    ->findOneBySiteHomePageID($cID);
+                
+                if (is_object($tree)) {
+                    $locale = $em->getRepository('Concrete\Core\Entity\Site\Locale')
+                        ->findOneByTree($tree);
+
+                    $item->set($locale);
+                    $cache->save($item);
+
+                    return $locale;
+                }
+            } else {
+                return $item->get();
+            }
         }
     }
 
@@ -291,8 +310,6 @@ class Section extends Page
     {
         $db = Database::get();
 
-        $mpRelationID = self::getMultilingualPageRelationID($oldPage->getCollectionID());
-
         if (static::isMultilingualSection($newPage)) {
             $ms = static::getByID($newPage->getCollectionID());
         } else {
@@ -303,6 +320,13 @@ class Section extends Page
         } else {
             $msx = static::getBySectionOfSite($oldPage);
         }
+
+        if (is_object($ms) && is_object($msx) && $ms->getLocale() === $msx->getLocale()) {
+            $mpRelationID = self::getMultilingualPageRelationID($newPage->getCollectionID());
+        } else {
+            $mpRelationID = self::getMultilingualPageRelationID($oldPage->getCollectionID());
+        }
+
         $isNew = false;
         if (is_object($ms)) {
             if (!$mpRelationID) {

@@ -3,14 +3,17 @@
 namespace Concrete\Block\ImageSlider;
 
 use Concrete\Core\Block\BlockController;
+use Concrete\Core\Database\Connection\Connection;
 use Concrete\Core\Editor\LinkAbstractor;
+use Concrete\Core\Feature\Features;
 use Concrete\Core\File\Tracker\FileTrackableInterface;
+use Concrete\Core\Feature\UsesFeatureInterface;
 use Concrete\Core\Statistics\UsageTracker\AggregateTracker;
 use Core;
 use Database;
 use Page;
 
-class Controller extends BlockController implements FileTrackableInterface
+class Controller extends BlockController implements FileTrackableInterface, UsesFeatureInterface
 {
     protected $btTable = 'btImageSlider';
     protected $btExportTables = ['btImageSlider', 'btImageSliderEntries'];
@@ -40,6 +43,13 @@ class Controller extends BlockController implements FileTrackableInterface
         parent::__construct($obj);
         $this->tracker = $tracker;
     }
+    
+    public function getRequiredFeatures(): array
+    {
+        return [
+            Features::IMAGERY
+        ];
+    }
 
     public function getBlockTypeDescription()
     {
@@ -66,16 +76,8 @@ class Controller extends BlockController implements FileTrackableInterface
         return $content;
     }
 
-    public function add()
-    {
-        $this->requireAsset('core/file-manager');
-        $this->requireAsset('core/sitemap');
-    }
-
     public function edit()
     {
-        $this->requireAsset('core/file-manager');
-        $this->requireAsset('core/sitemap');
         $db = Database::get();
         $query = $db->GetAll('SELECT * from btImageSliderEntries WHERE bID = ? ORDER BY sortOrder', [$this->bID]);
         $this->set('rows', $query);
@@ -85,21 +87,7 @@ class Controller extends BlockController implements FileTrackableInterface
     {
         $this->edit();
     }
-
-    public function registerViewAssets($outputContent = '')
-    {
-        $al = \Concrete\Core\Asset\AssetList::getInstance();
-
-        $this->requireAsset('javascript', 'jquery');
-        $this->requireAsset('responsive-slides');
-
-        $al->register('javascript', 'responsiveslides', 'blocks/image_slider/responsiveslides.js');
-        $this->requireAsset('javascript', 'blocks/image_slider/responsiveslides');
-
-        $al->register('css', 'responsiveslides', 'blocks/image_slider/responsiveslides.css');
-        $this->requireAsset('css', 'blocks/image_slider/responsiveslides');
-    }
-
+    
     public function getEntries()
     {
         $db = Database::get();
@@ -127,23 +115,15 @@ class Controller extends BlockController implements FileTrackableInterface
     public function duplicate($newBID)
     {
         parent::duplicate($newBID);
-        $db = Database::get();
-        $v = [$this->bID];
-        $q = 'select * from btImageSliderEntries where bID = ?';
-        $r = $db->query($q, $v);
-        while ($row = $r->FetchRow()) {
-            $db->execute('INSERT INTO btImageSliderEntries (bID, fID, linkURL, title, description, sortOrder, internalLinkCID) values(?,?,?,?,?,?,?)',
-                [
-                    $newBID,
-                    $row['fID'],
-                    $row['linkURL'],
-                    $row['title'],
-                    $row['description'],
-                    $row['sortOrder'],
-                    $row['internalLinkCID'],
-                ]
-            );
-        }
+        $db = $this->app->make(Connection::class);
+        $copyFields = 'fID, linkURL, title, description, sortOrder, internalLinkCID';
+        $db->executeUpdate(
+            "INSERT INTO btImageSliderEntries (bID, {$copyFields}) SELECT ?, {$copyFields} FROM btImageSliderEntries WHERE bID = ?",
+            [
+                $newBID,
+                $this->bID
+            ]
+        );
     }
 
     public function delete()

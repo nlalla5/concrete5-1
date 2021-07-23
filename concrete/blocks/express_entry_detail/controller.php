@@ -1,25 +1,33 @@
 <?php
+
 namespace Concrete\Block\ExpressEntryDetail;
 
-use Concrete\Controller\Element\Search\CustomizeResults;
 use Concrete\Core\Attribute\Key\CollectionKey;
-use \Concrete\Core\Block\BlockController;
-use Concrete\Core\Express\Entry\Search\Result\Result;
-use Concrete\Core\Express\EntryList;
+use Concrete\Core\Block\BlockController;
 use Concrete\Core\Express\Form\Context\FrontendViewContext;
 use Concrete\Core\Express\Form\Renderer;
+use Concrete\Core\Feature\Features;
+use Concrete\Core\Feature\UsesFeatureInterface;
 use Concrete\Core\Form\Context\ContextFactory;
-use Concrete\Core\Search\Result\ItemColumn;
+use Concrete\Core\Html\Service\Seo;
 use Concrete\Core\Support\Facade\Express;
 use Concrete\Core\Support\Facade\Facade;
+use Concrete\Core\Url\SeoCanonical;
+use Exception;
 use Symfony\Component\HttpFoundation\JsonResponse;
 
-class Controller extends BlockController
+class Controller extends BlockController implements UsesFeatureInterface
 {
+    protected $btInterfaceWidth = '640';
 
-    protected $btInterfaceWidth = "640";
-    protected $btInterfaceHeight = "400";
+    protected $btInterfaceHeight = '400';
+
     protected $btTable = 'btExpressEntryDetail';
+
+    /**
+     * @var \Doctrine\ORM\EntityManager
+     */
+    protected $entityManager;
 
     public function on_start()
     {
@@ -30,17 +38,24 @@ class Controller extends BlockController
 
     public function getBlockTypeDescription()
     {
-        return t("Add an Express entry detail display to a page.");
+        return t('Add an Express entry detail display to a page.');
     }
 
     public function getBlockTypeName()
     {
-        return t("Express Entry Detail");
+        return t('Express Entry Detail');
     }
 
     public function getBlockTypeInSetName()
     {
-        return t("Details");
+        return t('Details');
+    }
+
+    public function getRequiredFeatures(): array
+    {
+        return [
+            Features::EXPRESS,
+        ];
     }
 
     public function add()
@@ -60,7 +75,6 @@ class Controller extends BlockController
                 $this->set('entry', Express::getEntry($this->exSpecificEntryID));
             }
         }
-
     }
 
     public function view()
@@ -88,10 +102,16 @@ class Controller extends BlockController
                 if ($this->entryMode == 'S' && $this->exSpecificEntryID) {
                     $this->set('entry', Express::getEntry($this->exSpecificEntryID));
                 }
-
             }
         }
-        $form = $this->entityManager->find('Concrete\Core\Entity\Express\Form', $this->exFormID);
+
+        $form = null;
+        try {
+            $form = $this->entityManager->find('Concrete\Core\Entity\Express\Form', $this->exFormID);
+        } catch (Exception $e) {
+            $logger = $this->app->make('log/exceptions');
+            $logger->addEmergency($e->getMessage());
+        }
 
         if ($form) {
             $express = \Core::make('express');
@@ -105,7 +125,6 @@ class Controller extends BlockController
 
             $this->set('renderer', $renderer);
         }
-
     }
 
     public function action_view_express_entity($exEntryID = null)
@@ -114,6 +133,14 @@ class Controller extends BlockController
         if (is_object($entry)) {
             $entity = $this->entityManager->find('Concrete\Core\Entity\Express\Entity', $this->exEntityID);
             if ($entry->getEntity()->getID() == $entity->getID()) {
+                /** @var Seo $seo */
+                $seo = $this->app->make('helper/seo');
+                $seo->addTitleSegmentBefore($entry->getLabel());
+
+                /** @var SeoCanonical $canonical */
+                $canonical = $this->app->make(SeoCanonical::class);
+                $canonical->setPathArguments(['view_express_entity', $exEntryID]);
+
                 $this->set('entry', $entry);
                 $this->view();
             }
@@ -126,14 +153,14 @@ class Controller extends BlockController
         if ($exEntityID) {
             $entity = $this->entityManager->find('Concrete\Core\Entity\Express\Entity', $exEntityID);
             if (is_object($entity)) {
-                $r = new \stdClass;
-                $r->forms = array();
-                foreach($entity->getForms() as $form) {
+                $r = new \stdClass();
+                $r->forms = [];
+                foreach ($entity->getForms() as $form) {
                     $r->forms[] = $form;
                 }
                 ob_start();
                 $form_selector = $this->app->make('form/express/entry_selector');
-                print $form_selector->selectEntry($entity, 'exSpecificEntryID');
+                echo $form_selector->selectEntry($entity, 'exSpecificEntryID');
                 $r->selector = ob_get_contents();
                 ob_end_clean();
 
@@ -144,17 +171,16 @@ class Controller extends BlockController
         \Core::make('app')->shutdown();
     }
 
-
     public function loadData()
     {
-        $this->requireAsset('core/express');
         $r = $this->entityManager->getRepository('Concrete\Core\Entity\Express\Entity');
         $entityObjects = $r->findAll();
-        $entities = array('' => t("** Choose Entity"));
-        foreach($entityObjects as $entity) {
+        $entities = ['' => t('** Choose Entity')];
+        foreach ($entityObjects as $entity) {
             $entities[$entity->getID()] = $entity->getEntityDisplayName();
         }
         $this->set('entities', $entities);
+        $attributeKeys = [];
         $keys = CollectionKey::getList();
         foreach ($keys as $ak) {
             if ($ak->getAttributeTypeHandle() == 'express') {
@@ -163,5 +189,4 @@ class Controller extends BlockController
         }
         $this->set('expressAttributes', $attributeKeys);
     }
-
 }

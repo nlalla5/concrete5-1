@@ -9,6 +9,7 @@ use Concrete\Core\Entity\Attribute\Key\Settings\EmptySettings;
 use Concrete\Core\Form\Context\ContextInterface;
 use Concrete\Core\Search\ItemList\Database\AttributedItemList;
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\EntityNotFoundException;
 use SimpleXMLElement;
 
 class Controller extends AbstractController implements AttributeInterface
@@ -19,7 +20,7 @@ class Controller extends AbstractController implements AttributeInterface
     protected $entityManager;
 
     /**
-     * @var \Concrete\Core\Attribute\Key\Key|null
+     * @var \Concrete\Core\Entity\Attribute\Key\Key|null
      */
     protected $attributeKey;
 
@@ -27,6 +28,12 @@ class Controller extends AbstractController implements AttributeInterface
      * @var \Concrete\Core\Entity\Attribute\Value\AbstractValue
      */
     protected $attributeValue;
+
+    /**
+     * @var \Concrete\Core\Attribute\ObjectInterface
+     */
+    protected $attributeObject;
+
 
     /**
      * @var array|null
@@ -82,6 +89,14 @@ class Controller extends AbstractController implements AttributeInterface
     public function getAttributeType()
     {
         return isset($this->attributeType) ? $this->attributeType : null;
+    }
+
+    /**
+     * @param ObjectInterface $object
+     */
+    public function setAttributeObject(ObjectInterface $object)
+    {
+        $this->attributeObject = $object;
     }
 
     /**
@@ -225,10 +240,19 @@ class Controller extends AbstractController implements AttributeInterface
      */
     public function getAttributeValueObject()
     {
-        $class = $this->getAttributeValueClass();
-        if ($class && $this->attributeValue) {
-            $result = $this->entityManager->find($class, $this->attributeValue->getGenericValue());
-        } else {
+        try {
+            $class = $this->getAttributeValueClass();
+            if ($class && $this->attributeValue && !empty($this->attributeValue->getAttributeValueID())) {
+                $result = $this->entityManager->find($class, $this->attributeValue->getGenericValue());
+            } else {
+                if ($class && $this->attributeValue) {
+                    $result = $this->attributeValue;
+                } else {
+                    $result = null;
+                }
+            }
+        } catch (EntityNotFoundException $entityNotFoundException) {
+            // This is horrendous but something about this sometimes gets off in corrupted environments.
             $result = null;
         }
 
@@ -400,7 +424,7 @@ class Controller extends AbstractController implements AttributeInterface
         if ($this->attributeValue) {
             $av = new AttributeTypeView($this->attributeValue);
         } elseif ($this->attributeKey) {
-           $av = new AttributeTypeView($this->attributeKey);
+            $av = new AttributeTypeView($this->attributeKey);
         } elseif (isset($this->attributeType)) {
             $av = new AttributeTypeView($this->attributeType);
         } else {
@@ -503,7 +527,7 @@ class Controller extends AbstractController implements AttributeInterface
     {
         $request = array_merge($this->request->request->all(), $this->request->query->all());
         $req = ($this->requestArray == false) ? $request : $this->requestArray;
-        if ($this->attributeKey && is_array($req['akID'])) {
+        if ($this->attributeKey && isset($req['akID']) && is_array($req['akID'])) {
             $p = $req['akID'][$this->attributeKey->getAttributeKeyID()];
             if ($field) {
                 return $p[$field];
@@ -522,11 +546,8 @@ class Controller extends AbstractController implements AttributeInterface
     {
         $request = array_merge($this->request->request->all(), $this->request->query->all());
         $req = ($this->requestArray == false) ? $request : $this->requestArray;
-        if ($this->attributeKey && is_array($req['akID'])) {
-            return true;
-        }
 
-        return false;
+        return $this->attributeKey && isset($req['akID']) && is_array($req['akID']);
     }
 
     /**

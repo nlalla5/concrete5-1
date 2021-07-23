@@ -1,18 +1,14 @@
 <?php
+
 namespace Concrete\Controller\SinglePage\Dashboard\Pages;
 
-use Concrete\Core\Attribute\Key\Category;
-use Concrete\Core\Attribute\Key\CollectionKey;
-use Concrete\Core\Attribute\Type;
+use Concrete\Core\Attribute\Category\CategoryService;
+use Concrete\Core\Attribute\TypeFactory;
 use Concrete\Core\Page\Controller\DashboardAttributesPageController;
+use Concrete\Core\Support\Facade\Url;
 
 class Attributes extends DashboardAttributesPageController
 {
-    protected function getCategoryObject()
-    {
-        return Category::getByHandle('collection');
-    }
-
     public function view()
     {
         $this->renderList();
@@ -20,42 +16,58 @@ class Attributes extends DashboardAttributesPageController
 
     public function edit($akID = null)
     {
-        $key = CollectionKey::getByID($akID);
-        $this->renderEdit($key,
-            \URL::to('/dashboard/pages/attributes', 'view')
-        );
+        $akc = $this->getCategoryObject()->getAttributeKeyCategory();
+        $key = $akc->getAttributeKeyByID($akID);
+
+        $this->renderEdit($key, Url::to('/dashboard/pages/attributes', 'view'));
     }
 
     public function update($akID = null)
     {
         $this->edit($akID);
-        $key = CollectionKey::getByID($akID);
-        $category = Category::getByHandle('collection');
-        $this->executeUpdate($key,
-            \URL::to('/dashboard/pages/attributes', 'view')
-        );
+
+        $akc = $this->getCategoryObject()->getAttributeKeyCategory();
+        $key = $akc->getAttributeKeyByID($akID);
+
+        $this->executeUpdate($key, Url::to('/dashboard/pages/attributes', 'view'));
     }
 
     public function select_type($type = null)
     {
-        $type = Type::getByID($type);
-        $this->renderAdd($type,
-            \URL::to('/dashboard/pages/attributes', 'view', $id)
-        );
+        $typeFactory = $this->app->make(TypeFactory::class);
+        $type = $typeFactory->getByID($type);
+
+        $this->renderAdd($type, Url::to('/dashboard/pages/attributes', 'view'));
     }
 
     public function add($type = null)
     {
         $this->select_type($type);
-        $type = Type::getByID($type);
-        $this->executeAdd($type, \URL::to('/dashboard/pages/attributes', 'view'));
+        $typeFactory = $this->app->make(TypeFactory::class);
+        $type = $typeFactory->getByID($type);
+
+        $this->executeAdd($type, Url::to('/dashboard/pages/attributes', 'view'));
     }
 
     public function delete($akID = null)
     {
-        $key = CollectionKey::getByID($akID);
-        $this->executeDelete($key,
-            \URL::to('/dashboard/pages/attributes', 'view')
-        );
+        $akc = $this->getCategoryObject()->getAttributeKeyCategory();
+        $key = $akc->getAttributeKeyByID($akID);
+
+        $this->executeDelete($key, Url::to('/dashboard/pages/attributes', 'view'));
+    }
+
+    /**
+     * {@inheritdoc}
+     *
+     * @see \Concrete\Core\Page\Controller\DashboardAttributesPageController::getCategoryObject()
+     *
+     * @return \Concrete\Core\Entity\Attribute\Category
+     */
+    protected function getCategoryObject()
+    {
+        $categoryService = $this->app->make(CategoryService::class);
+
+        return $categoryService->getByHandle('collection');
     }
 }

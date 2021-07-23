@@ -1,158 +1,232 @@
-<?php
+<?php /** @noinspection DuplicatedCode */
 
 namespace Concrete\Controller\SinglePage\Dashboard\Reports;
 
+use Concrete\Core\Config\Repository\Repository;
+use Concrete\Core\Entity\Search\Query;
+use Concrete\Core\Entity\Search\SavedLogSearch;
+use Concrete\Core\Filesystem\Element;
+use Concrete\Core\Filesystem\ElementManager;
+use Concrete\Core\Http\Response;
+use Concrete\Core\Http\ResponseFactory;
+use Concrete\Core\Localization\Service\Date;
+use Concrete\Core\Logging\Channels;
 use Concrete\Core\Logging\LogEntry;
 use Concrete\Core\Logging\LogList;
 use Concrete\Core\Page\Controller\DashboardPageController;
-use Concrete\Core\User\User;
-use Log;
-use Request;
+use Concrete\Core\Logging\Search\Menu\MenuFactory;
+use Concrete\Core\Logging\Search\SearchProvider;
+use Concrete\Core\Permission\Key\Key;
+use Concrete\Core\Search\Field\Field\KeywordsField;
+use Concrete\Core\Search\Query\Modifier\AutoSortColumnRequestModifier;
+use Concrete\Core\Search\Query\Modifier\ItemsPerPageRequestModifier;
+use Concrete\Core\Search\Query\QueryFactory;
+use Concrete\Core\Search\Query\QueryModifier;
+use Concrete\Core\Search\Result\Result;
+use Concrete\Core\Search\Result\ResultFactory;
+use Concrete\Core\User\UserInfo;
+use Monolog\Logger;
+use Symfony\Component\HttpFoundation\Request;
 
 class Logs extends DashboardPageController
 {
-    public function clear($token = '', $channel = false)
+
+    /**
+     * @var Element
+     */
+    protected $headerMenu;
+
+    /**
+     * @var Element
+     */
+    protected $headerSearch;
+
+    /**
+     * @return SearchProvider
+     */
+    protected function getSearchProvider()
     {
-        $valt = $this->app->make('helper/validation/token');
-        if ($valt->validate('', $token)) {
-            if (!$channel) {
-                Log::clearAll();
-            } else {
-                Log::clearByChannel($channel);
-            }
-            $this->redirect('/dashboard/reports/logs');
-        } else {
-            $this->redirect('/dashboard/reports/logs');
+        return $this->app->make(SearchProvider::class);
+    }
+
+    /**
+     * @return QueryFactory
+     */
+    protected function getQueryFactory()
+    {
+        return $this->app->make(QueryFactory::class);
+    }
+
+    protected function getHeaderMenu()
+    {
+        if (!isset($this->headerMenu)) {
+            $this->headerMenu = $this->app->make(ElementManager::class)->get('dashboard/reports/logs/search/menu');
         }
+
+        return $this->headerMenu;
+    }
+
+    protected function getHeaderSearch()
+    {
+        if (!isset($this->headerSearch)) {
+            $this->headerSearch = $this->app->make(ElementManager::class)->get('dashboard/reports/logs/search/search');
+        }
+
+        return $this->headerSearch;
+    }
+
+    /**
+     * @param Result $result
+     */
+    protected function renderSearchResult(Result $result)
+    {
+        $headerMenu = $this->getHeaderMenu();
+        $headerSearch = $this->getHeaderSearch();
+        /** @noinspection PhpPossiblePolymorphicInvocationInspection */
+        $headerMenu->getElementController()->setQuery($result->getQuery());
+        /** @noinspection PhpPossiblePolymorphicInvocationInspection */
+        $headerSearch->getElementController()->setQuery($result->getQuery());
+
+        $this->set('resultsBulkMenu', $this->app->make(MenuFactory::class)->createBulkMenu());
+        $this->set('result', $result);
+        $this->set('headerMenu', $headerMenu);
+        $this->set('headerSearch', $headerSearch);
+
+        $this->setThemeViewTemplate('full.php');
+    }
+
+    /**
+     * @param Query $query
+     * @return Result
+     */
+    protected function createSearchResult(Query $query)
+    {
+        $provider = $this->app->make(SearchProvider::class);
+        /** @var ResultFactory $resultFactory */
+        $resultFactory = $this->app->make(ResultFactory::class);
+        /** @var QueryModifier $queryModifier */
+        $queryModifier = $this->app->make(QueryModifier::class);
+        $queryModifier->addModifier(new AutoSortColumnRequestModifier($provider, $this->request, Request::METHOD_GET));
+        $queryModifier->addModifier(new ItemsPerPageRequestModifier($provider, $this->request, Request::METHOD_GET));
+        $query = $queryModifier->process($query);
+        return $resultFactory->createFromQuery($provider, $query);
+    }
+
+    protected function getSearchKeywordsField()
+    {
+        $keywords = null;
+
+        if ($this->request->query->has('keywords')) {
+            $keywords = $this->request->query->get('keywords');
+        }
+
+        return new KeywordsField($keywords);
+    }
+
+    public function view()
+    {
+        $query = $this->getQueryFactory()->createQuery($this->getSearchProvider(), [
+            $this->getSearchKeywordsField()
+        ]);
+        $result = $this->createSearchResult($query);
+        $this->renderSearchResult($result);
+        /** @noinspection PhpPossiblePolymorphicInvocationInspection */
+        $this->headerSearch->getElementController()->setQuery(null);
+    }
+
+    public function advanced_search()
+    {
+        $query = $this->getQueryFactory()->createFromAdvancedSearchRequest(
+            $this->getSearchProvider(), $this->request, Request::METHOD_GET
+        );
+
+        $result = $this->createSearchResult($query);
+
+        $this->renderSearchResult($result);
+    }
+
+    public function preset($presetID = null)
+    {
+        if ($presetID) {
+            $preset = $this->entityManager->find(SavedLogSearch::class, $presetID);
+
+            if ($preset) {
+                /** @noinspection PhpParamsInspection */
+                $query = $this->getQueryFactory()->createFromSavedSearch($preset);
+                $result = $this->createSearchResult($query);
+                $this->renderSearchResult($result);
+                return;
+            }
+        }
+
         $this->view();
     }
 
-    public function view($page = 0)
+    /** @noinspection PhpInconsistentReturnPointsInspection */
+    public function export()
     {
-        $this->requireAsset('selectize');
+        if ($this->isReportEnabled()) {
+            $taskPermission = Key::getByHandle("delete_log_entries");
+            if (is_object($taskPermission)) {
+                $allowExport = $taskPermission->validate();
+            } else {
+                // This is a previous concrete5 versions that don't have the new task permission installed
+                $allowExport = true;
+            }
 
-        $levels = [];
-        foreach (Log::getLevels() as $level) {
-            $levels[$level] = Log::getLevelDisplayName($level);
-        }
+            if ($allowExport) {
+                /** @var ResponseFactory $responseFactory */
+                $responseFactory = $this->app->make(ResponseFactory::class);
+                /** @var Date $dateService */
+                $dateService = $this->app->make(Date::class);
 
-        $channels = ['' => t('All Channels')];
-        foreach (Log::getChannels() as $channel) {
-            $channels[$channel] = Log::getChannelDisplayName($channel);
-        }
+                $list = new LogList();
+                /** @var LogEntry[] $entries */
+                $entries = $list->getResults();
 
-        $r = Request::getInstance();
-        $query = http_build_query([
-            'channel' => $r->query->get('channel'),
-            'keywords' => $r->query->get('keywords'),
-            'level' => $r->query->get('level'),
-        ]);
+                $fp = fopen('php://temp', 'r+');
 
-        $list = $this->getFilteredList();
+                // write the columns
+                fputcsv($fp, [
+                    t('Date'),
+                    t('Level'),
+                    t('Channel'),
+                    t('User'),
+                    t('Message'),
+                ]);
 
-        $entries = $list->getPage();
-        $this->set('list', $list);
-        $this->set('entries', $entries);
-
-        $this->set('levels', $levels);
-        $this->set('channels', $channels);
-
-        $this->set('query', $query);
-    }
-
-    public function csv($token = '')
-    {
-        $valt = $this->app->make('helper/validation/token');
-        if (!$valt->validate('', $token)) {
-            $this->redirect('/dashboard/reports/logs');
-        } else {
-            $list = $this->getFilteredList();
-            $entries = $list->get(0);
-
-            $fileName = 'Log Search Results';
-
-            header('Content-Type: text/csv');
-            header('Cache-control: private');
-            header('Pragma: public');
-            $date = date('Ymd');
-            header('Content-Disposition: attachment; filename=' . $fileName . "_form_data_{$date}.csv");
-
-            $fp = fopen('php://output', 'w');
-
-            // write the columns
-            $row = [
-                t('Date'),
-                t('Level'),
-                t('Channel'),
-                t('User'),
-                t('Message'),
-            ];
-
-            fputcsv($fp, $row);
-
-            foreach ($entries as $ent) {
-                $uID = $ent->getUserID();
-                if (empty($uID)) {
-                    $user = t('Guest');
-                } else {
-                    $u = User::getByUserID($uID);
-                    if (is_object($u)) {
-                        $user = $u->getUserName();
-                    } else {
-                        $user = tc('Deleted user', 'Deleted (id: %s)', $uID);
-                    }
+                foreach ($entries as $entry) {
+                    /** @noinspection PhpUnhandledExceptionInspection */
+                    fputcsv($fp, [
+                        $dateService->formatDateTime($entry->getTime(), true, true),
+                        Logger::getLevelName($entry->getLevel()),
+                        Channels::getChannelDisplayName($entry->getChannel()),
+                        $entry->getUser() instanceof UserInfo ? $entry->getUser()->getUserName() : t('Guest'),
+                        $entry->getMessage(),
+                    ]);
                 }
 
-                $row = [
-                    $ent->getDisplayTimestamp(),
-                    $ent->getLevelName(),
-                    $ent->getChannelDisplayName(),
-                    $user,
-                    $ent->getMessage(),
-                ];
+                rewind($fp);
 
-                fputcsv($fp, $row);
+                $csv = stream_get_contents($fp);
+
+                fclose($fp);
+
+                return $responseFactory->create($csv, Response::HTTP_OK, [
+                    'Content-Type' => 'text/csv',
+                    'Cache-control' => 'private',
+                    'Pragma' => 'public',
+                    'Content-Disposition' => 'attachment; filename="' . t('Log Search Results') . '_form_data_' . date('Ymd') . '.csv"'
+                ]);
             }
-
-            fclose($fp);
-            die;
         }
     }
 
-    public function getFilteredList()
+    protected function isReportEnabled()
     {
-        $list = new LogList();
-
-        $r = Request::getInstance();
-        if ($r->query->has('channel') && $r->query->get('channel') != '') {
-            $list->filterByChannel($r->query->get('channel'));
-            $this->set('selectedChannel', h($r->query->get('channel')));
-        }
-        if ($r->query->has('level')) {
-            $selectedlevels = $r->get('level');
-            if (is_array($selectedlevels) && count($selectedlevels) != 8) {
-                $list->filterByLevels($selectedlevels);
-            }
-        }
-        if ($r->query->has('keywords') && $r->query->get('keywords') != '') {
-            $list->filterByKeywords($r->query->get('keywords'));
-        }
-
-        return $list;
+        /** @var Repository $config */
+        $config = $this->app->make(Repository::class);
+        return $config->get('concrete.log.enable_dashboard_report');
     }
 
-    public function deleteLog($logID, $token = '')
-    {
-        $valt = $this->app->make('helper/validation/token');
-        if ($valt->validate('', $token) && !empty($logID)) {
-            $log = LogEntry::getByID($logID);
-            if (is_object($log)) {
-                $log->delete();
-            }
-            $this->redirect('/dashboard/reports/logs');
-        } else {
-            $this->redirect('/dashboard/reports/logs');
-        }
-        $this->view();
-    }
 }

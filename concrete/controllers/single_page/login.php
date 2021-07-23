@@ -1,10 +1,14 @@
 <?php
 namespace Concrete\Controller\SinglePage;
 
+use Concrete\Core\Application\UserInterface\Dashboard\Navigation\NavigationCache;
 use Concrete\Core\Authentication\AuthenticationType;
 use Concrete\Core\Authentication\AuthenticationTypeFailureException;
 use Concrete\Core\Http\ResponseFactoryInterface;
 use Concrete\Core\Localization\Localization;
+use Concrete\Core\Logging\Channels;
+use Concrete\Core\Logging\LoggerAwareInterface;
+use Concrete\Core\Logging\LoggerAwareTrait;
 use Concrete\Core\Routing\RedirectResponse;
 use Concrete\Core\User\PostLoginLocation;
 use Exception;
@@ -13,8 +17,15 @@ use Concrete\Core\User\User;
 use UserAttributeKey;
 use UserInfo;
 
-class Login extends PageController
+class Login extends PageController implements LoggerAwareInterface
 {
+    use LoggerAwareTrait;
+
+    public function getLoggerChannel()
+    {
+        return Channels::CHANNEL_SECURITY;
+    }
+
     public $helpers = ['form'];
     protected $locales = [];
 
@@ -46,16 +57,16 @@ class Login extends PageController
      *
      * @param string $type
      * @param string $method
-     * @param null   $a
-     * @param null   $b
-     * @param null   $c
-     * @param null   $d
-     * @param null   $e
-     * @param null   $f
-     * @param null   $g
-     * @param null   $h
-     * @param null   $i
-     * @param null   $j
+     * @param null $a
+     * @param null $b
+     * @param null $c
+     * @param null $d
+     * @param null $e
+     * @param null $f
+     * @param null $g
+     * @param null $h
+     * @param null $i
+     * @param null $j
      *
      * @throws \Concrete\Core\Authentication\AuthenticationTypeFailureException
      * @throws \Exception
@@ -66,9 +77,11 @@ class Login extends PageController
             return $this->view();
         }
         $at = AuthenticationType::getByHandle($type);
-        if ($at) {
-            $this->set('authType', $at);
+        if (!$at || !$at->isEnabled()) {
+            throw new AuthenticationTypeFailureException(t('Invalid authentication type.'));
         }
+
+        $this->set('authType', $at);
         if (!method_exists($at->controller, $method)) {
             return $this->view();
         }
@@ -108,6 +121,9 @@ class Login extends PageController
         } else {
             try {
                 $at = AuthenticationType::getByHandle($type);
+                if (!$at->isEnabled()) {
+                    throw new AuthenticationTypeFailureException(t('Invalid authentication type.'));
+                }
                 $user = $at->controller->authenticate();
                 if ($user && $user->isRegistered()) {
                     return $this->finishAuthentication($at, $user);
@@ -189,6 +205,10 @@ class Login extends PageController
         $ue = new \Concrete\Core\User\Event\User($u);
         $this->app->make('director')->dispatch('on_user_login', $ue);
 
+        /** @var NavigationCache $navigationCache */
+        $navigationCache = $this->app->make(NavigationCache::class);
+        $navigationCache->clear();
+
         return new RedirectResponse(
             $this->app->make('url/manager')->resolve(['/login', 'login_complete'])
         );
@@ -198,7 +218,7 @@ class Login extends PageController
     {
         // Move this functionality to a redirected endpoint rather than from within the previous method because
         // session isn't set until we redirect and reload.
-        $u = new User();
+        $u = $this->app->make(User::class);
         if (!$this->error) {
             $this->error = $this->app->make('helper/validation/error');
         }
@@ -207,8 +227,28 @@ class Login extends PageController
             $pll = $this->app->make(PostLoginLocation::class);
             $response = $pll->getPostLoginRedirectResponse(true);
 
+            // Expire the site cache in the logged in user's browser to avoid
+            // their full page cache serving local cached versions of the pages
+            // as they are now logged in and should probably see extra elements
+            // on the pages.
+            //
+            // Unfortunately this does not work in all browsers for insecure
+            // origins by default and you may see an error in the browser
+            // console. To get it to work, see the following e.g. in Chrome:
+            // chrome://flags/#unsafely-treat-insecure-origin-as-secure
+            // ----
+            // Update (from andrew): This slows down sites significantly on login. Sometimes it takes 20-30 seconds
+            // to login, which is unacceptable. If browsers figure out how to do this asynchronously at some point
+            // we can look to re-enable this.
+            // $response->headers->set('Clear-Site-Data', '"cache"');
+
             return $response;
         } else {
+            $session = $this->app->make('session');
+            $this->logger->notice(
+                t('Session made it to login_complete but was not attached to an authenticated session.'),
+                ['session' => $session->getId(), 'ip_address' => $_SERVER['REMOTE_ADDR']]
+            );
             $this->error->add(t('User is not registered. Check your authentication controller.'));
             $u->logout();
         }
@@ -255,7 +295,6 @@ class Login extends PageController
 
     /**
      * @deprecated Use the getPostLoginUrl method of \Concrete\Core\User\PostLoginLocation
-     *
      * @see \Concrete\Core\User\PostLoginLocation::getPostLoginUrl()
      *
      * @return string
@@ -264,13 +303,12 @@ class Login extends PageController
     {
         $pll = $this->app->make(PostLoginLocation::class);
         $url = $pll->getPostLoginUrl(true);
-        
+
         return $url;
     }
 
     /**
      * @deprecated Use the getSessionPostLoginUrl method of \Concrete\Core\User\PostLoginLocation
-     *
      * @see \Concrete\Core\User\PostLoginLocation::getSessionPostLoginUrl()
      *
      * @return string|false
@@ -285,13 +323,18 @@ class Login extends PageController
 
     public function view($type = null, $element = 'form')
     {
-        $this->requireAsset('javascript', 'backstretch');
         $this->set('authTypeParams', $this->getSets());
+
+        $user = $this->app->make(User::class);
+        $this->set('user', $user);
+
         if (strlen($type)) {
             try {
                 $at = AuthenticationType::getByHandle($type);
-                $this->set('authType', $at);
-                $this->set('authTypeElement', $element);
+                if ($at->isEnabled()) {
+                    $this->set('authType', $at);
+                    $this->set('authTypeElement', $element);
+                }
             } catch (\Exception $e) {
                 // Don't fail loudly
             }
@@ -313,10 +356,10 @@ class Login extends PageController
             }
             User::loginByUserID($session->get('uRequiredAttributeUser'));
             $session->remove('uRequiredAttributeUser');
-            $u = new User();
+            $u = $this->app->make(User::class);
             $at = AuthenticationType::getByHandle($session->get('uRequiredAttributeUserAuthenticationType'));
             $session->remove('uRequiredAttributeUserAuthenticationType');
-            if (!$at) {
+            if (!$at || !$at->isEnabled()) {
                 throw new Exception(t('Invalid Authentication Type'));
             }
 
@@ -360,7 +403,7 @@ class Login extends PageController
     public function logout($token = false)
     {
         if ($this->app->make('token')->validate('logout', $token)) {
-            $u = new User();
+            $u = $this->app->make(User::class);
             $u->logout();
             $this->redirect('/');
         }

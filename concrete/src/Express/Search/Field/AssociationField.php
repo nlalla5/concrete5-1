@@ -8,8 +8,10 @@ use Concrete\Core\Entity\Express\ManyToOneAssociation;
 use Concrete\Core\Express\EntryList;
 use Concrete\Core\Express\Form\Context\DashboardFormContext;
 use Concrete\Core\Form\Context\Registry\ControlRegistry;
+use Concrete\Core\Form\Service\Form;
 use Concrete\Core\Search\Field\AbstractField;
 use Concrete\Core\Search\ItemList\ItemList;
+use Symfony\Component\Serializer\Normalizer\DenormalizerInterface;
 
 class AssociationField extends AbstractField
 {
@@ -29,7 +31,7 @@ class AssociationField extends AbstractField
     public function getKey()
     {
         if ($this->association !== null) {
-            return 'association_' . $this->association->getId();
+            return 'express_association_' . $this->association->getId();
         }
     }
 
@@ -48,7 +50,14 @@ class AssociationField extends AbstractField
     /**
      * Initialize the instance.
      */
-    public function __construct(Association $association)
+    public function __construct(Association $association = null)
+    {
+        if ($association) {
+            $this->loadAssociation($association);
+        }
+    }
+
+    protected function loadAssociation(Association $association)
     {
         $this->association = $association;
         $this->associationID = $association->getId();
@@ -72,43 +81,15 @@ class AssociationField extends AbstractField
     public function renderSearchField()
     {
         if ($this->association !== null) {
-            $registry = \Core::make(ControlRegistry::class);
-            $control = new AssociationControl();
-            $control->setAssociation($this->association);
-            $control->setId($this->association->getId());
-            $context = new DashboardFormContext();
-            // Is there an entity selected?
-            if (isset($this->data['express_association_' . $this->associationID])) {
-                $selected = $this->data['express_association_' . $this->associationID];
-                // We have to spoof an entry in order for this to be selected. Kind of lame but oh well.
-
-                if (is_array($selected)) {
-                    $spoofedAssociation = new Entry\ManyAssociation();
-                    foreach($selected as $id) {
-                        $selectedEntry = new Entry();
-                        $selectedEntry->setID($id);
-                        $spoofedAssociation->getSelectedEntriesCollection()->add($selectedEntry);
-                    }
-                    $spoofedAssociation->setAssociation($this->association);
-                } else {
-                    $selectedEntry = new Entry();
-                    $selectedEntry->setID($selected);
-                    $spoofedAssociation = new Entry\OneAssociation();
-                    $spoofedAssociation->setAssociation($this->association);
-                    $spoofedAssociation->setSelectedEntry($selectedEntry);
-                }
-
-                $spoofedEntry = new Entry();
-                $spoofedEntry->getAssociations()->add($spoofedAssociation);
-                $context->setEntry($spoofedEntry);
+            $form = \Core::make(Form::class);
+            $name = 'express_association_' . $this->associationID;
+            $list = new EntryList($this->association->getTargetEntity());
+            $results = $list->getresults();
+            $entries = ['' => t('** Select an entry')];
+            foreach($results as $result) {
+                $entries[$result->getId()] = $result->getLabel();
             }
-
-            $view = $registry->getControlView($context, 'express_control_association', [
-                $control
-            ]);
-            $view->setSupportsLabel(false);
-            $renderer = $view->getControlRenderer();
-            return $renderer->render();
+            return $form->select($name, $entries, $this->data['express_association_' . $this->associationID]);
         }
     }
 
@@ -136,11 +117,33 @@ class AssociationField extends AbstractField
     }
 
     /**
+     * @return array|mixed
+     */
+    public function jsonSerialize()
+    {
+        $json = parent::jsonSerialize();
+        $json['associationID'] = $this->association->getId();
+        return $json;
+    }
+
+    public function denormalize(DenormalizerInterface $denormalizer, $data, $format = null, array $context = [])
+    {
+        $em = \Database::connection()->getEntityManager();
+        $association = $em->find('Concrete\Core\Entity\Express\Association', $data['associationID']);
+        $this->loadAssociation($association);
+        parent::denormalize($denormalizer, $data, $format, $context);
+
+    }
+
+    /**
      * Initialize the instance once it has been deserialized.
      */
     public function __wakeup()
     {
         $em = \Database::connection()->getEntityManager();
-        $this->association = $em->find('Concrete\Core\Entity\Express\Association', $this->associationID);
+        $association = $em->find('Concrete\Core\Entity\Express\Association', $this->associationID);
+        if ($association) {
+            $this->loadAssociation($association);
+        }
     }
 }

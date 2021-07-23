@@ -1,6 +1,7 @@
 <?php
 namespace Concrete\Core\Form\Service\Widget;
 
+use Concrete\Core\Http\ResponseAssetGroup;
 use Concrete\Core\Support\Facade\Application;
 use DateTime as PHPDateTime;
 use Exception;
@@ -93,7 +94,7 @@ class DateTime
      *
      * @return string
      */
-    public function datetime($field, $value = null, $includeActivation = false, $calendarAutoStart = true, $classes = null, $timeResolution = 60, array $datePickerOptions = array())
+    public function datetime($field, $value = null, $includeActivation = false, $calendarAutoStart = true, $classes = null, $timeResolution = 60, array $datePickerOptions = [])
     {
         $app = Application::getFacadeApplication();
         $dh = $app->make('helper/date');
@@ -239,43 +240,43 @@ class DateTime
                 $html .= '>' . sprintf('%02d', $i) . '</option>';
             }
             $html .= '</select>';
-            if ($timeFormat === 12) {
-                $html .= '<select class="form-control" id="' . $id . '_a" name="' . $fieldAMPM . '"' . $disabled . '>';
-                $html .= '<option value="AM"';
-                if ($timeAMPM === 'AM') {
+        }
+        if ($timeFormat === 12) {
+            $html .= '<select class="form-control" id="' . $id . '_a" name="' . $fieldAMPM . '"' . $disabled . '>';
+            $html .= '<option value="AM"';
+            if ($timeAMPM === 'AM') {
+                $html .= ' selected="selected"';
+            }
+            $html .= '>';
+            // This prints out the translation of "AM" in the current language
+            $html .= $dh->date('A', mktime(1), 'system');
+            $html .= '</option>';
+            $html .= '<option value="PM"';
+            if ($timeAMPM === 'PM') {
+                $html .= ' selected="selected"';
+            }
+            $html .= '>';
+            // This prints out the translation of "PM" in the current language
+            $html .= $dh->date('A', mktime(13), 'system');
+            $html .= '</option>';
+            $html .= '</select>';
+        }
+        if ($stepSeconds !== 0) {
+            $html .= '<span class="separator">:</span>';
+            $html .= '<select class="form-control"  id="' . $id . '_s" name="' . $fieldSeconds . '"' . $disabled . '>';
+            $secondsList = [];
+            for ($i = 0; $i < 60; $i += $stepSeconds) {
+                $secondsList[] = $i;
+            }
+            $timeSecond = $this->selectNearestValue($secondsList, $timeSecond);
+            foreach ($secondsList as $i) {
+                $html .= '<option value="' . sprintf('%02d', $i) . '"';
+                if ($i === $timeSecond) {
                     $html .= ' selected="selected"';
                 }
-                $html .= '>';
-                // This prints out the translation of "AM" in the current language
-                $html .= $dh->date('A', mktime(1), 'system');
-                $html .= '</option>';
-                $html .= '<option value="PM"';
-                if ($timeAMPM === 'PM') {
-                    $html .= ' selected="selected"';
-                }
-                $html .= '>';
-                // This prints out the translation of "PM" in the current language
-                $html .= $dh->date('A', mktime(13), 'system');
-                $html .= '</option>';
-                $html .= '</select>';
+                $html .= '>' . sprintf('%02d', $i) . '</option>';
             }
-            if ($stepSeconds !== 0) {
-                $html .= '<span class="separator">:</span>';
-                $html .= '<select class="form-control"  id="' . $id . '_s" name="' . $fieldSeconds . '"' . $disabled . '>';
-                $secondsList = [];
-                for ($i = 0; $i < 60; $i += $stepSeconds) {
-                    $secondsList[] = $i;
-                }
-                $timeSecond = $this->selectNearestValue($secondsList, $timeSecond);
-                foreach ($secondsList as $i) {
-                    $html .= '<option value="' . sprintf('%02d', $i) . '"';
-                    if ($i === $timeSecond) {
-                        $html .= ' selected="selected"';
-                    }
-                    $html .= '>' . sprintf('%02d', $i) . '</option>';
-                }
-                $html .= '</select>';
-            }
+            $html .= '</select>';
         }
         $html .= '</span>';
         $html .= '</div>';
@@ -296,7 +297,7 @@ class DateTime
             $html .= <<<EOT
 <script type="text/javascript">
 $(function() {
-  $('#{$id}_dt_pub').datepicker($.extend({$datePickerOptionsAsJSON}, {
+  $('#{$id}_dt_pub').datepicker($.extend({
     dateFormat: $dateFormat,
     altFormat: 'yy-mm-dd',
     altField: '#{$id}_dt',
@@ -309,8 +310,8 @@ $(function() {
         $(inst.settings.altField).val('');
       }
     }
-  })).datepicker('setDate', $defaultDateJs);
-})
+  },{$datePickerOptionsAsJSON})).datepicker('setDate', $defaultDateJs).attr('autocomplete', 'off');
+});
 </script>
 EOT;
         }
@@ -345,7 +346,7 @@ EOT;
      *
      * @return string
      */
-    public function date($field, $value = null, $calendarAutoStart = true, array $datePickerOptions = array())
+    public function date($field, $value = null, $calendarAutoStart = true, array $datePickerOptions = [])
     {
         $app = Application::getFacadeApplication();
         $dh = $app->make('helper/date');
@@ -397,7 +398,7 @@ EOT;
             $html .= <<<EOT
 <script type="text/javascript">
 $(function() {
-  $('#{$id}_pub').datepicker($.extend({$datePickerOptionsAsJSON}, {
+  $('#{$id}_pub').datepicker($.extend({
     dateFormat: $dateFormat,
     altFormat: 'yy-mm-dd',
     altField: '#{$id}',
@@ -409,7 +410,7 @@ $(function() {
         $(inst.settings.altField).val('');
       }
     }
-  })).datepicker('setDate', $defaultDateJs);
+  },{$datePickerOptionsAsJSON})).datepicker('setDate', $defaultDateJs).attr('autocomplete', 'off');
 });
 </script>
 EOT;

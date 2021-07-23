@@ -1,4 +1,5 @@
 <?php
+use Concrete\Core\Cookie\ResponseCookieJar;
 use Concrete\Core\Url\SeoCanonical;
 use Concrete\Core\Localization\Localization;
 use Concrete\Core\Multilingual\Page\Section\Section;
@@ -6,6 +7,15 @@ use Concrete\Core\Support\Facade\Application;
 use Symfony\Component\EventDispatcher\GenericEvent;
 
 defined('C5_EXECUTE') or die("Access Denied.");
+
+/**
+ * Arguments:
+ *
+ * @var string|null $pageTitle
+ * @var string|null $pageDescription
+ * @var string|null $pageMetaKeywords
+ * @var bool|null $disableTrackingCode
+ */
 
 $c = Page::getCurrentPage();
 $cp = false;
@@ -96,7 +106,9 @@ if ($pageMetaKeywords) {
 if ($c !== null && $c->getAttribute('exclude_search_index')) {
     $metaTags['robots'] = sprintf('<meta name="robots" content="%s"/>', 'noindex');
 }
-$metaTags['generator'] = sprintf('<meta name="generator" content="%s"/>', 'concrete5' . ($appConfig->get('concrete.misc.app_version_display_in_header') ? ' - ' . APP_VERSION : null));
+if ($appConfig->get('concrete.misc.generator_tag_display_in_header')) {
+    $metaTags['generator'] = sprintf('<meta name="generator" content="%s"/>', 'concrete5');
+}
 if (($modernIconFID = (int) $config->get('misc.modern_tile_thumbnail_fid')) && ($modernIconFile = File::getByID($modernIconFID))) {
     $metaTags['msapplication-TileImage'] = sprintf('<meta name="msapplication-TileImage" content="%s"/>', $modernIconFile->getURL());
     $modernIconBGColor = (string) $config->get('misc.modern_tile_thumbnail_bgcolor');
@@ -117,7 +129,7 @@ $browserToolbarColor = (string) $config->get('misc.browser_toolbar_color');
 if ($browserToolbarColor !== '') {
     $metaTags['browserToolbarColor'] = sprintf('<meta name="theme-color" content="%s"/>', h($browserToolbarColor));
 }
-if ($config->get('seo.canonical_tag')) {
+if ($config->get('seo.canonical_tag.enabled')) {
     if (($canonicalLink = $app->make(SeoCanonical::class)->getPageCanonicalURLTag($c, Request::getInstance())) !== null) {
         $linkTags['canonical'] = (string) $canonicalLink;
     }
@@ -171,7 +183,6 @@ if (!empty($alternateHreflangTags)) {
     var CCM_EDIT_MODE = <?php echo $isEditMode ? 'true' : 'false'; ?>;
     var CCM_ARRANGE_MODE = <?php echo $isArrangeMode ? 'true' : 'false'; ?>;
     var CCM_IMAGE_PATH = "<?php echo ASSETS_URL_IMAGES; ?>";
-    var CCM_TOOLS_PATH = "<?php echo REL_DIR_FILES_TOOLS_REQUIRED; ?>";
     var CCM_APPLICATION_URL = "<?php echo rtrim((string) $app->make('url/canonical'), '/'); ?>";
     var CCM_REL = "<?php echo $app->make('app_relative_path'); ?>";
     var CCM_ACTIVE_LOCALE = <?= json_encode(Localization::activeLocale()) ?>;
@@ -179,18 +190,13 @@ if (!empty($alternateHreflangTags)) {
 
 <?php
 $v = View::getRequestInstance();
-$u = new User();
-if ($u->isRegistered()) {
-    $v->requireAsset('core/account');
-    $v->addFooterItem('<script type="text/javascript">$(function() { if (window.ccm_enableUserProfileMenu) ccm_enableUserProfileMenu(); });</script>');
-}
 if ($cp) {
     View::element('page_controls_header', ['cp' => $cp, 'c' => $c]);
     if ($isEditMode) {
         $cookie = $app->make('cookie');
         if ($cookie->get('ccmLoadAddBlockWindow')) {
             $v->addFooterItem('<script type="text/javascript">$(function() { setTimeout(function() { $("a[data-launch-panel=add-block]").click()}, 100); });</script>');
-            $cookie->clear('ccmLoadAddBlockWindow');
+            $app->make(ResponseCookieJar::class)->clear('ccmLoadAddBlockWindow');
         }
     }
 }

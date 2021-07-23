@@ -4,7 +4,9 @@ use Concrete\Core\Support\Facade\Application;
 
 defined('C5_EXECUTE') or die('Access Denied.');
 
-$u = new User();
+$app = Application::getFacadeApplication();
+
+$u = $app->make(Concrete\Core\User\User::class);
 if (!$u->isRegistered()) {
     return;
 }
@@ -24,16 +26,15 @@ $cp = new Permissions($desktop);
 if (!$cp->canRead()) {
     return;
 }
-$app = Application::getFacadeApplication();
 $url = $app->make('url/manager');
 ?>
 <div style="display: none">
     <div class="btn-group" id="ccm-account-menu">
-        <a class="btn btn-default" href="<?=$desktop->getCollectionLink()?>"><i class="fa fa-user"></i> <?=$ui->getUserDisplayName()?></a>
-        <button class="btn btn-default dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false">
+        <a class="btn btn-secondary" href="<?=$desktop->getCollectionLink()?>"><i class="fa fa-user"></i> <?=$ui->getUserDisplayName()?></a>
+        <button class="btn btn-secondary dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false">
             <span class="caret"></span>
         </button>
-        <ul class="dropdown-menu pull-right" role="menu">
+        <ul class="dropdown-menu float-right" role="menu">
             <li><a href="<?=$url->resolve([$desktop])?>"><?=t('My Account')?></a></li>
             <li class="divider"></li>
             <?php

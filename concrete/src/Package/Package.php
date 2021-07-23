@@ -190,6 +190,15 @@ abstract class Package implements LocalizablePackageInterface
     protected $pkgAllowsFullContentSwap = false;
 
     /**
+     * Override this value to add additional content swap templates.
+     *
+     * @var array
+     */
+    protected $pkgContentSwapFiles = [
+        "content.xml" => "Default"
+    ];
+
+    /**
      * Override this value and set it to true if your package provides the file thumbnails.
      * If it's false, the file thumbnails are generated during the install process.
      *
@@ -263,6 +272,24 @@ abstract class Package implements LocalizablePackageInterface
     }
 
     /**
+     * @return array
+     */
+    public function getContentSwapFiles(): array
+    {
+        return $this->pkgContentSwapFiles;
+    }
+
+    /**
+     * @param array $pkgContentSwapFiles
+     * @return Package
+     */
+    public function setContentSwapFiles(array $pkgContentSwapFiles): Package
+    {
+        $this->pkgContentSwapFiles = $pkgContentSwapFiles;
+        return $this;
+    }
+
+    /**
      * Get the Application instance.
      *
      * @return Application
@@ -290,7 +317,18 @@ abstract class Package implements LocalizablePackageInterface
     public function installContentFile($file)
     {
         $ci = new ContentImporter();
-        $ci->importContentFile($this->getPackagePath() . '/' . $file);
+        $cache = $this->app->make('cache/request');
+        $cacheEnabled = $cache->isEnabled();
+        if ($cacheEnabled) {
+            $cache->disable();
+        }
+        try {
+            $ci->importContentFile($this->getPackagePath() . '/' . $file);
+        } finally {
+            if ($cacheEnabled) {
+                $cache->enable();
+            }
+        }
     }
 
     /**
@@ -572,7 +610,8 @@ abstract class Package implements LocalizablePackageInterface
      */
     public function uninstall()
     {
-        $manager = new Manager($this->app);
+        /** @var Manager $manager */
+        $manager = $this->app->make(Manager::class, [$this->app]);
         $categories = $manager->getPackageItemCategories();
         $package = $this->getPackageEntity();
         foreach ($categories as $category) {
@@ -603,14 +642,16 @@ abstract class Package implements LocalizablePackageInterface
      */
     public function getChangelogContents()
     {
-        $result = '';
-        $file = $this->getPackagePath() . '/CHANGELOG';
-        if (is_file($file)) {
-            $contents = $this->app->make('helper/file')->getContents($file);
-            $result = nl2br(h($contents));
+        $prefix = $this->getPackagePath() . '/';
+        foreach (['CHANGELOG', 'CHANGELOG.txt', 'CHANGELOG.md'] as $name) {
+            $file = $prefix . $name;
+            if (is_file($file)) {
+                $contents = $this->app->make('helper/file')->getContents($file);
+                return nl2br(h($contents));
+            }
         }
 
-        return $result;
+        return '';
     }
 
     /**
@@ -641,7 +682,7 @@ abstract class Package implements LocalizablePackageInterface
 
     /**
      * @deprecated
-     * Use $app->make('Concrete\Core\Package\PackageService')->getInstalledHandles()
+     * Use $app->make('Concrete\Core\Package\PackageService')->getByHandle($pkgHandle)
      *
      * @param string $pkgHandle
      *
@@ -751,7 +792,7 @@ abstract class Package implements LocalizablePackageInterface
             }
         }
 
-        if (empty($errors)) {
+        if (!$errors->has()) {
             // Step 3 - test minimum application version requirement
             $applicationVersionRequired = $this->getApplicationVersionRequired();
             if (version_compare(APP_VERSION, $applicationVersionRequired, '<')) {
@@ -786,7 +827,9 @@ abstract class Package implements LocalizablePackageInterface
     public function testForUninstall()
     {
         $errors = $this->app->make('error');
-        $manager = new Manager($this->app);
+
+        /** @var Manager $manager */
+        $manager = $this->app->make(Manager::class, [$this->app]);
 
         $driver = $manager->driver('theme');
         $themes = $driver->getItems($this->getPackageEntity());
@@ -971,7 +1014,9 @@ abstract class Package implements LocalizablePackageInterface
         $this->upgradeDatabase();
 
         // now we refresh all blocks
-        $manager = new Manager($this->app);
+
+        /** @var Manager $manager */
+        $manager = $this->app->make(Manager::class, [$this->app]);
         $items = $manager->driver('block_type')->getItems($this->getPackageEntity());
         foreach ($items as $item) {
             $item->refresh();

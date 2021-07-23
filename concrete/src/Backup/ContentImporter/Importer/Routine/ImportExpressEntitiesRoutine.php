@@ -29,20 +29,23 @@ class ImportExpressEntitiesRoutine extends AbstractRoutine
                 if (!is_object($entity)) {
                     $entity = new Entity();
                     $entity->setId((string) $entityNode['id']);
+                    $tree = ExpressEntryResults::get();
+                    $node = $tree->getNodeByDisplayPath((string) $entityNode['results-folder']);
+                    $node = \Concrete\Core\Tree\Node\Type\ExpressEntryResults::add((string) $entityNode['name'], $node);
+                    $entity->setEntityResultsNodeId($node->getTreeNodeID());
                 }
                 $entity->setPluralHandle((string) $entityNode['plural_handle']);
                 $entity->setHandle((string) $entityNode['handle']);
                 $entity->setDescription((string) $entityNode['description']);
                 $entity->setName((string) $entityNode['name']);
+                $entity->setPackage(static::getPackageObject($entityNode['package']));
                 if (((string) $entityNode['include_in_public_list']) == '') {
                     $entity->setIncludeInPublicList(false);
                 }
+                if (((string) $entityNode['use_separate_site_result_buckets']) === '1') {
+                    $entity->setUseSeparateSiteResultBuckets(true);
+                }
                 $entity->setHandle((string) $entityNode['handle']);
-
-                $tree = ExpressEntryResults::get();
-                $node = $tree->getNodeByDisplayPath((string) $entityNode['results-folder']);
-                $node = \Concrete\Core\Tree\Node\Type\ExpressEntryResults::add((string) $entityNode['name'], $node);
-                $entity->setEntityResultsNodeId($node->getTreeNodeID());
                 $em->persist($entity);
 
                 // Import the attributes
@@ -50,10 +53,13 @@ class ImportExpressEntitiesRoutine extends AbstractRoutine
                     $app = Facade::getFacadeApplication();
                     $category = new ExpressCategory($entity, $app, $em);
                     foreach($entityNode->attributekeys->attributekey as $keyNode) {
-                        $type = $app->make('Concrete\Core\Attribute\TypeFactory')->getByHandle(
-                            (string) $keyNode['type']
-                        );
-                        $category->import($type, $keyNode);
+                        $attributeKey = $category->getAttributeKeyByHandle((string) $keyNode['handle']);
+                        if (!$attributeKey) {
+                            $type = $app->make('Concrete\Core\Attribute\TypeFactory')->getByHandle(
+                                (string)$keyNode['type']
+                            );
+                            $category->import($type, $keyNode);
+                        }
                     }
                 }
             }

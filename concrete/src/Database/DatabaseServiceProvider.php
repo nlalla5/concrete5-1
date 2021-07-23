@@ -5,8 +5,7 @@ namespace Concrete\Core\Database;
 use Concrete\Core\Database\Driver\DriverManager;
 use Concrete\Core\Database\Query\LikeBuilder;
 use Concrete\Core\Foundation\Service\Provider as ServiceProvider;
-use Concrete\Core\Package\PackageList;
-use Doctrine\ORM\EntityManagerInterface;
+use Predis\Client;
 
 class DatabaseServiceProvider extends ServiceProvider
 {
@@ -31,6 +30,16 @@ class DatabaseServiceProvider extends ServiceProvider
             return $manager;
         });
 
+        $this->app->singleton('database/redis',
+            function ($app) {
+                $predis = new Client(
+                    $app->make('config')->get('database.redis.parameters'),
+                    $app->make('config')->get('database.redis.options')
+                );
+                return $predis;
+            }
+        );
+
         // Bind default connection resolver
         $this->app->bind('Concrete\Core\Database\Connection\Connection',
             function ($app) {
@@ -39,14 +48,15 @@ class DatabaseServiceProvider extends ServiceProvider
         $this->app->bind('Doctrine\DBAL\Connection',
             'Concrete\Core\Database\Connection\Connection');
 
+        $this->app->alias('Concrete\Core\Database\Connection\Connection', 'database/connection');
 
         // Bind EntityManager factory
         $this->app->bind('Concrete\Core\Database\EntityManagerConfigFactory',
             function($app) {
             $config = $app->make('Doctrine\ORM\Configuration');
             $configRepository = $app->make('config');
-            $connection = $app->make('Doctrine\DBAL\Connection');
-            return new EntityManagerConfigFactory($app, $config, $configRepository, $connection);
+
+            return new EntityManagerConfigFactory($app, $config, $configRepository);
         });
         $this->app->bind('Concrete\Core\Database\EntityManagerConfigFactoryInterface',
             'Concrete\Core\Database\EntityManagerConfigFactory');
@@ -167,6 +177,7 @@ class DatabaseServiceProvider extends ServiceProvider
         return array(
             'database',
             'database/orm',
+            'redis',
             'orm/cache',
             'orm/cachedAnnotationReader',
             'orm/cachedSimpleAnnotationReader',

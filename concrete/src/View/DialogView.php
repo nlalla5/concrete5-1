@@ -7,7 +7,8 @@ use View as ConcreteView;
 use Concrete\Core\Asset\CssAsset;
 use Concrete\Core\Asset\JavascriptAsset;
 use Concrete\Core\Asset\JavascriptInlineAsset;
-use User;
+use Concrete\Core\User\User;
+use Concrete\Core\Support\Facade\Application;
 
 class DialogView extends ConcreteView
 {
@@ -16,20 +17,40 @@ class DialogView extends ConcreteView
         $this->markHeaderAssetPosition();
     }
 
+    public function getViewTemplateFile()
+    {
+        return $this->template;
+    }
+
+    protected function loadViewThemeObject()
+    {
+        return null;
+    }
+
+    public function renderViewContents($scopeItems)
+    {
+        $contents = '<!--ccm:assets:'.Asset::ASSET_POSITION_HEADER.'//-->';
+        $contents .= '<!--ccm:assets:'.Asset::ASSET_POSITION_FOOTER.'//-->';
+        $contents .= parent::renderViewContents($scopeItems);
+
+        return $contents;
+    }
+
     public function outputAssetIntoView($item)
     {
         if ($item instanceof Asset) {
             $formatter = new JavascriptFormatter();
-            print $formatter->output($item);
+            return $formatter->output($item);
         } else {
-            print $item . "\n";
+            return $item . "\n";
         }
     }
 
     public function getScopeItems()
     {
+        $app = Application::getFacadeApplication();
         $items = parent::getScopeItems();
-        $u = new User();
+        $u = $app->make(User::class);
         $items['u'] = $u;
 
         return $items;
@@ -43,8 +64,6 @@ class DialogView extends ConcreteView
             foreach ($assets as $asset) {
                 if ($asset instanceof Asset) {
                     $asset->setAssetPosition(Asset::ASSET_POSITION_HEADER);
-                    $asset->setAssetSupportsMinification(false);
-                    $asset->setAssetSupportsCombination(false);
                 }
                 $return[$position][] = $asset;
             }
@@ -53,19 +72,4 @@ class DialogView extends ConcreteView
         return $return;
     }
 
-    /*
-    protected function onAfterGetContents() {
-        // now that we have the contents of the tool,
-        // we make sure any require assets get moved into the header
-        // since that's the only place they work in the AJAX output.
-        $r = Request::getInstance();
-        $assets = $r->getRequiredAssetsToOutput();
-        foreach($assets as $asset) {
-            $asset->setAssetPosition(Asset::ASSET_POSITION_HEADER);
-            $asset->setAssetSupportsMinification(false);
-            $asset->setAssetSupportsCombination(false);
-            $this->addOutputAsset($asset);
-        }
-    }
-    */
 }

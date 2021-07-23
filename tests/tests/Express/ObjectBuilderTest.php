@@ -27,6 +27,7 @@ class ObjectBuilderTest extends ConcreteDatabaseTestCase
 
     protected $metadatas = [
         'Concrete\Core\Entity\Express\Entity',
+        'Concrete\Core\Entity\Express\Entry',
         'Concrete\Core\Entity\Express\Association',
         'Concrete\Core\Entity\Express\Form',
         'Concrete\Core\Entity\Express\FieldSet',
@@ -42,7 +43,7 @@ class ObjectBuilderTest extends ConcreteDatabaseTestCase
         'Concrete\Core\Entity\Attribute\Key\Settings\TextareaSettings',
     ];
 
-    protected function setUp()
+    public function setUp(): void
     {
         parent::setUp();
 
@@ -203,7 +204,7 @@ class ObjectBuilderTest extends ConcreteDatabaseTestCase
         $this->assertEquals($defaultViewForm, $form);
         $this->assertNotEquals($defaultViewForm, $secondForm);
         $this->assertNotEquals($defaultViewForm, $secondForm);
-        
+
     }
 
     public function testCreateAssociation()

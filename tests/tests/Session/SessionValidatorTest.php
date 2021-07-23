@@ -6,17 +6,16 @@ use Concrete\Core\Http\Request;
 use Concrete\Core\Permission\IPService;
 use Concrete\Core\Session\SessionValidator;
 use Concrete\Core\Support\Facade\Application;
-use Concrete\TestHelpers\TestHeadersTrait;
-use PHPUnit_Framework_TestCase;
+use Concrete\Tests\TestCase;
+use IPLib\Address\AddressInterface;
+use IPLib\Factory;
 use Symfony\Component\HttpFoundation\Session\Session;
 
 /**
  * @runTestsInSeparateProcesses
  */
-class SessionValidatorTest extends PHPUnit_Framework_TestCase
+class SessionValidatorTest extends TestCase
 {
-    use TestHeadersTrait;
-
     protected $preserveGlobalState = false;
 
     /** @var \Concrete\Core\Application\Application */
@@ -33,9 +32,10 @@ class SessionValidatorTest extends PHPUnit_Framework_TestCase
 
     public function setUp()
     {
-        $this->skipIfHeadersSent();
-
         $this->app = clone Application::getFacadeApplication();
+        $this->app->singleton(AddressInterface::class, function () {
+            return Factory::addressFromString($this->request->getClientIp(), true, true, true);
+        });
         $this->app['config'] = clone $this->app['config'];
 
         $this->request = Request::create('http://url.com/');
@@ -103,7 +103,7 @@ class SessionValidatorTest extends PHPUnit_Framework_TestCase
         $this->validator->setLogger($logger);
 
         // Don't invalidate
-        $logger->expects($this->once())->method('debug');
+        $logger->expects($this->once())->method('notice');
         $this->session->expects($this->once())->method('invalidate');
         $this->validator->handleSessionValidation($this->session);
     }
@@ -121,7 +121,7 @@ class SessionValidatorTest extends PHPUnit_Framework_TestCase
         $this->validator->setLogger($logger);
 
         // Invalidate
-        $logger->expects($this->once())->method('debug');
+        $logger->expects($this->once())->method('notice');
         $this->session->expects($this->once())->method('invalidate');
         $this->validator->handleSessionValidation($this->session);
     }

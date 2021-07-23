@@ -8,6 +8,7 @@ class AttributeKeyHandleGeneratorTest extends ConcreteDatabaseTestCase
 {
     protected $metadatas = [
         'Concrete\Core\Entity\Express\Entity',
+        'Concrete\Core\Entity\Express\Entry',
         'Concrete\Core\Entity\Attribute\Key\Key',
         'Concrete\Core\Entity\Attribute\Key\ExpressKey',
     ];
@@ -20,7 +21,6 @@ class AttributeKeyHandleGeneratorTest extends ConcreteDatabaseTestCase
     public static function setupBeforeClass()
     {
         parent::setUpBeforeClass();
-        \Core::make('cache/request')->disable();
     }
 
     public function testExpressHandleGenerator()

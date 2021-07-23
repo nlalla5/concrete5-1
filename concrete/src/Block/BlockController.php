@@ -6,7 +6,6 @@ use Concrete\Core\Backup\ContentImporter;
 use Concrete\Core\Entity\Block\BlockType\BlockType;
 use Concrete\Core\Block\View\BlockViewTemplate;
 use Concrete\Core\Controller;
-use Concrete\Core\Feature\Feature;
 use Concrete\Core\Legacy\BlockRecord;
 use Concrete\Core\Page\Controller\PageController;
 use Concrete\Core\Page\Type\Type;
@@ -17,6 +16,7 @@ use Database;
 use Events;
 use Package;
 use Page;
+use Concrete\Core\Error\ErrorList\ErrorList;
 
 class BlockController extends \Concrete\Core\Controller\AbstractController
 {
@@ -50,10 +50,11 @@ class BlockController extends \Concrete\Core\Controller\AbstractController
     protected $btExportPageFeedColumns = [];
     protected $btWrapperClass = '';
     protected $btDefaultSet;
-    protected $btFeatures = [];
-    protected $btFeatureObjects;
     protected $identifier;
     protected $btTable = null;
+    protected $btID;
+
+    public static $btTitleFormats = ['h1' => 'H1', 'h2' => 'H2', 'h3' => 'H3', 'h4' => 'H4', 'h5' => 'H5', 'h6' => 'H6', 'p' => 'Normal'];
 
     /**
      * Set this to true if the data sent to the save/performSave methods can contain NULL values that should be persisted.
@@ -136,9 +137,20 @@ class BlockController extends \Concrete\Core\Controller\AbstractController
         $this->blockViewRenderOverride = $view;
     }
 
+    /**
+     * Used to validate a blocks data before saving to the database
+     * Generally should return an empty ErrorList if valid
+     * Custom Packages may return a boolean value
+     *
+     * @param $args array|string|null
+     * @version <= 8.4.3 Method returns ErrorList|boolean
+     * @version 8.5.0a3 Method returns ErrorList
+     * @return ErrorList|boolean
+     */
     public function validate($args)
     {
-        return true;
+        $e = $this->app->make(ErrorList::class);
+        return $e;
     }
 
     public function getBlockControllerData()
@@ -260,11 +272,13 @@ class BlockController extends \Concrete\Core\Controller\AbstractController
     {
         parent::__construct();
         if ($obj instanceof BlockType) {
+            $this->btID = $obj->getBlockTypeID();
             $this->identifier = 'BLOCKTYPE_' . $obj->getBlockTypeID();
             $this->btHandle = $obj->getBlockTypeHandle();
         } else {
             if ($obj instanceof Block) {
                 $b = $obj;
+                $this->btID = $b->getBlockTypeID();
                 $this->identifier = 'BLOCK_' . $obj->getBlockID();
                 $this->bID = $b->getBlockID();
                 $this->btHandle = $obj->getBlockTypeHandle();
@@ -318,21 +332,6 @@ class BlockController extends \Concrete\Core\Controller\AbstractController
                 $this->set($key, $value);
             }
         }
-    }
-
-    public function getBlockTypeFeatureObjects()
-    {
-        if (!isset($this->btFeatureObjects)) {
-            $this->btFeatureObjects = [];
-            foreach ($this->btFeatures as $feHandle) {
-                $fe = Feature::getByHandle($feHandle);
-                if (is_object($fe)) {
-                    $this->btFeatureObjects[] = $fe;
-                }
-            }
-        }
-
-        return $this->btFeatureObjects;
     }
 
     public function export(\SimpleXMLElement $blockNode)
@@ -410,6 +409,12 @@ class BlockController extends \Concrete\Core\Controller\AbstractController
         // now we insert stuff that isn't part of the btTable
         // we have to do this this way because we need a bID
         $this->importAdditionalData($b, $blockNode);
+
+        // now we handle container settings
+        $bCustomContainerSettings = (string) $blockNode['custom-container-settings'];
+        if ($bCustomContainerSettings === '0' || $bCustomContainerSettings === '1') {
+            $b->setCustomContainerSettings($bCustomContainerSettings);
+        }
 
         // now we handle the styles
         if (isset($blockNode->style)) {
@@ -493,6 +498,15 @@ class BlockController extends \Concrete\Core\Controller\AbstractController
         return $pp->canAddPageType();
     }
 
+    /**
+     * @return int|null
+     */
+    public function getBlockTypeID()
+    {
+        return $this->btID;
+    }
+
+
     public function validateComposerEditBlockPassThruAction(Block $b)
     {
         return $this->validateEditBlockPassThruAction($b);
@@ -502,8 +516,63 @@ class BlockController extends \Concrete\Core\Controller\AbstractController
     {
         $method = 'action_' . $parameters[0];
         $parameters = array_slice($parameters, 1);
-
         return [$method, $parameters];
+    }
+
+    /**
+     * Creates a URL that can be posted or navigated to that, when done so, will automatically run the corresponding method inside the block's controller.
+     * It can also be used to perform system operations, accordingly to the current action.
+     *
+     * @param mixed $task,... The arguments to build the URL (variable number of arguments).
+     *
+     * @return \Concrete\Core\Url\UrlImmutable|null Return NULL in case of problems
+     */
+    public function getActionURL($task)
+    {
+        try {
+
+            if (is_object($this->block)) {
+                if (is_object($this->block->getProxyBlock())) {
+                    $b = $this->block->getProxyBlock();
+                } else {
+                    $b = $this->block;
+                }
+
+                $action = $this->getAction();
+                if ($action === 'view' || strpos($action, 'action_') === 0) {
+                    $c = Page::getCurrentPage();
+                    if (is_object($b) && is_object($c)) {
+                        $arguments = func_get_args();
+                        $arguments[] = $b->getBlockID();
+                        array_unshift($arguments, $c);
+
+                        return call_user_func_array(array('\URL', 'page'), $arguments);
+                    }
+                } else {
+                    $c = $this->getCollectionObject();
+                    $arguments = array_merge(array('/ccm/system/block/action/edit',
+                        $c->getCollectionID(),
+                        urlencode($this->getAreaObject()->getAreaHandle()),
+                        $this->block->getBlockID(),
+                    ), func_get_args());
+
+                    return call_user_func_array(array('\URL', 'to'), $arguments);
+
+                }
+            } else {
+                $c = \Page::getCurrentPage();
+                $arguments = array_merge(array('/ccm/system/block/action/add',
+                    $c->getCollectionID(),
+                    urlencode($this->getAreaObject()->getAreaHandle()),
+                    $this->getBlockTypeID(),
+                ), func_get_args());
+
+                return call_user_func_array(array('\URL', 'to'), $arguments);
+
+            }
+        } catch (\Exception $e) {
+        }
+
     }
 
     public function isValidControllerTask($method, $parameters = [])

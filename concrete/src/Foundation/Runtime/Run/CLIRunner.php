@@ -49,14 +49,21 @@ class CLIRunner implements RunInterface, ApplicationAwareInterface
         $this->initializeSystemTimezone();
 
         $input = new ArgvInput();
-        if ($input->getFirstArgument() !== 'c5:update') {
-            if ($this->app->isInstalled()) {
-                $this->app->setupPackageAutoloaders();
+        if ($this->app->isInstalled()) {
+            $this->app->setupPackageAutoloaders();
+            if ($input->getFirstArgument() !== 'c5:update') {
+                // In GitHub issue #5640 we gated this functionality completely, including autoloaders.
+                // But this causes issues when upgrading with addons that define their own permission keys.
+                // I'm still not convinced that disabling ANYTHING on update is a good policy, but for now
+                // let's run setupPackageAutoloaders always, but not run setupPackages (which is on_start())
                 $this->app->setupPackages();
             }
         }
 
-        $console->setupDefaultCommands();
+        // Handle legacy backwards compatibility
+        if (method_exists($console, 'setupDefaultCommands')) {
+            $console->setupDefaultCommands();
+        }
 
         \Events::dispatch('on_before_console_run');
 

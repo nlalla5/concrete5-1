@@ -1,13 +1,15 @@
 <?php
 namespace Concrete\Core\Http;
 
+use Concrete\Core\Application\Application;
 use Concrete\Core\Foundation\Service\Provider as ServiceProvider;
 use Concrete\Core\Http\Middleware\DelegateInterface;
 use Concrete\Core\Http\Middleware\MiddlewareDelegate;
 use Concrete\Core\Http\Middleware\MiddlewareStack;
 use Concrete\Core\Http\Middleware\StackInterface;
-use Zend\Http\Client\Adapter\Curl as CurlHttpAdapter;
-use Zend\Http\Client\Adapter\Proxy as SocketHttpAdapter;
+use Concrete\Core\Http\PSR7\GuzzleFactory;
+use GuzzleHttp\Psr7\ServerRequest;
+use Psr\Http\Message\ServerRequestInterface;
 
 class HttpServiceProvider extends ServiceProvider
 {
@@ -16,6 +18,9 @@ class HttpServiceProvider extends ServiceProvider
         $singletons = [
             'helper/ajax' => '\Concrete\Core\Http\Service\Ajax',
             'helper/json' => '\Concrete\Core\Http\Service\Json',
+            ResponseAssetGroup::class => function() {
+                return ResponseAssetGroup::get();
+            },
         ];
 
         foreach ($singletons as $key => $value) {
@@ -52,21 +57,13 @@ class HttpServiceProvider extends ServiceProvider
 
         $this->app->bind(Client\Client::class, function ($app) {
             $factory = $app->make(Client\Factory::class);
-
             return $factory->createFromConfig($app->make('config'));
         });
         $this->app->alias(Client\Client::class, 'http/client');
 
-        $this->app->bind('http/client/curl', function ($app) {
-            $factory = $app->make(Client\Factory::class);
-
-            return $factory->createFromConfig($app->make('config'), CurlHttpAdapter::class);
-        });
-
-        $this->app->bind('http/client/socket', function ($app) {
-            $factory = $app->make(Client\Factory::class);
-
-            return $factory->createFromConfig($app->make('config'), SocketHttpAdapter::class);
+        $this->app->bind(ServerRequestInterface::class, ServerRequest::class);
+        $this->app->bind(ServerRequest::class, function(Application $app) {
+            return $app->make(GuzzleFactory::class)->createRequest($app->make(Request::class));
         });
     }
 }

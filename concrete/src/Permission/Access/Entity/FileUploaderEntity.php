@@ -1,12 +1,13 @@
 <?php
 namespace Concrete\Core\Permission\Access\Entity;
 
+use Concrete\Core\Support\Facade\Application;
 use Concrete\Core\Permission\Access\FileFolderAccess;
 use Loader;
 use Concrete\Core\Permission\Access\Access as PermissionAccess;
 use Config;
 use UserInfo;
-use User;
+use Concrete\Core\User\User;
 use Concrete\Core\Permission\Access\FileSetAccess as FileSetPermissionAccess;
 use Concrete\Core\Permission\Access\FileAccess as FilePermissionAccess;
 
@@ -28,7 +29,8 @@ class FileUploaderEntity extends Entity
         if ($pae instanceof FilePermissionAccess) {
             $f = $pae->getPermissionObject();
             if (is_object($f)) {
-                $u = new User();
+                $app = Application::getFacadeApplication();
+                $u = $app->make(User::class);
 
                 return $u->getUserID() == $f->getUserID();
             }
@@ -39,7 +41,7 @@ class FileUploaderEntity extends Entity
 
     public function getAccessEntityTypeLinkHTML()
     {
-        $html = '<a href="javascript:void(0)" onclick="ccm_choosePermissionAccessEntityFileUploader()">' . tc('PermissionAccessEntityTypeName', 'File Uploader') . '</a>';
+        $html = '<a href="javascript:void(0)" class="dropdown-item" onclick="ccm_choosePermissionAccessEntityFileUploader()">' . tc('PermissionAccessEntityTypeName', 'File Uploader') . '</a>';
 
         return $html;
     }

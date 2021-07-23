@@ -3,17 +3,21 @@ namespace Concrete\Block\PageList;
 
 use BlockType;
 use CollectionAttributeKey;
+use Concrete\Core\Attribute\Key\CollectionKey;
 use Concrete\Core\Block\BlockController;
+use Concrete\Core\Feature\Features;
+use Concrete\Core\Feature\UsesFeatureInterface;
+use Concrete\Core\Html\Service\Seo;
 use Concrete\Core\Page\Feed;
 use Concrete\Core\Tree\Node\Node;
+use Concrete\Core\Tree\Node\Type\Topic;
+use Core;
+use Concrete\Core\Url\SeoCanonical;
 use Database;
 use Page;
-use Core;
 use PageList;
-use Concrete\Core\Attribute\Key\CollectionKey;
-use Concrete\Core\Tree\Node\Type\Topic;
 
-class Controller extends BlockController
+class Controller extends BlockController implements UsesFeatureInterface
 {
     protected $btTable = 'btPageList';
     protected $btInterfaceWidth = 700;
@@ -26,18 +30,25 @@ class Controller extends BlockController
     protected $btCacheBlockOutputOnPost = true;
     protected $btCacheBlockOutputLifetime = 300;
     protected $list;
+    
+    public function getRequiredFeatures(): array
+    {
+        return [
+            Features::NAVIGATION,
+        ];
+    }
 
     /**
      * Used for localization. If we want to localize the name/description we have to include this.
      */
     public function getBlockTypeDescription()
     {
-        return t("List pages based on type, area.");
+        return t('List pages based on type, area.');
     }
 
     public function getBlockTypeName()
     {
-        return t("Page List");
+        return t('Page List');
     }
 
     public function getJavaScriptStrings()
@@ -87,7 +98,7 @@ class Controller extends BlockController
 
         switch ($this->filterDateOption) {
             case 'now':
-                $start = date('Y-m-d').' 00:00:00';
+                $start = date('Y-m-d') . ' 00:00:00';
                 $end = $now;
                 break;
 
@@ -175,7 +186,7 @@ class Controller extends BlockController
 
         $this->list->filterByExcludePageList(false);
 
-        if (intval($this->cParentID) != 0) {
+        if ((int) ($this->cParentID) != 0) {
             $cParentID = ($this->cThis) ? $this->cID : (($this->cThisParent) ? $this->cPID : $this->cParentID);
             if ($this->includeAllDescendents) {
                 $this->list->filterByPath(Page::getByID($cParentID)->getCollectionPath());
@@ -228,7 +239,6 @@ class Controller extends BlockController
 
     public function add()
     {
-        $this->requireAsset('core/topics');
         $c = Page::getCurrentPage();
         $uh = Core::make('helper/concrete/urls');
         $this->set('c', $c);
@@ -238,19 +248,18 @@ class Controller extends BlockController
         $this->set('bt', BlockType::getByHandle('page_list'));
         $this->set('featuredAttribute', CollectionAttributeKey::getByHandle('is_featured'));
         $this->set('thumbnailAttribute', CollectionAttributeKey::getByHandle('thumbnail'));
+        $this->set('titleFormat', 'h5');
+        $this->set('topicFilter', '');
+        $this->set('filterDateOption', 'all');
         $this->loadKeys();
     }
 
     public function edit()
     {
-        $this->requireAsset('core/topics');
         $b = $this->getBlockObject();
-        $bCID = $b->getBlockCollectionID();
         $bID = $b->getBlockID();
         $this->set('bID', $bID);
-        $c = Page::getCurrentPage();
         if ((!$this->cThis) && (!$this->cThisParent) && ($this->cParentID != 0)) {
-            $isOtherPage = true;
             $this->set('isOtherPage', true);
         }
         if ($this->pfID) {
@@ -264,29 +273,30 @@ class Controller extends BlockController
         $this->set('bt', BlockType::getByHandle('page_list'));
         $this->set('featuredAttribute', CollectionAttributeKey::getByHandle('is_featured'));
         $this->set('thumbnailAttribute', CollectionAttributeKey::getByHandle('thumbnail'));
-        $this->loadKeys();
-    }
-
-    protected function loadKeys()
-    {
-        $attributeKeys = [];
-        $keys = CollectionKey::getList();
-        foreach ($keys as $ak) {
-            if ($ak->getAttributeTypeHandle() == 'topics') {
-                $attributeKeys[] = $ak;
-            }
+        $topicFilter = '';
+        if ($this->filterByRelated) {
+            $topicFilter = 'related';
+        }elseif ($this->filterByCustomTopic) {
+            $topicFilter = 'custom';
         }
-        $this->set('attributeKeys', $attributeKeys);
+        $this->set('topicFilter', $topicFilter);
+        $this->loadKeys();
     }
 
     public function action_filter_by_topic($treeNodeID = false, $topic = false)
     {
         if ($treeNodeID) {
-            $topicObj = Topic::getByID(intval($treeNodeID));
+            $topicObj = Topic::getByID((int) $treeNodeID);
             if (is_object($topicObj) && $topicObj instanceof Topic) {
-                $this->list->filterByTopic(intval($treeNodeID));
-                $seo = Core::make('helper/seo');
+                $this->list->filterByTopic((int) $treeNodeID);
+
+                /** @var Seo $seo */
+                $seo = $this->app->make('helper/seo');
                 $seo->addTitleSegment($topicObj->getTreeNodeDisplayName());
+
+                /** @var SeoCanonical $canonical */
+                $canonical = $this->app->make(SeoCanonical::class);
+                $canonical->setPathArguments(['topic', $treeNodeID, $topic]);
             }
         }
         $this->view();
@@ -294,8 +304,14 @@ class Controller extends BlockController
 
     public function action_filter_by_tag($tag = false)
     {
-        $seo = Core::make('helper/seo');
+        /** @var Seo $seo */
+        $seo = $this->app->make('helper/seo');
         $seo->addTitleSegment($tag);
+
+        /** @var SeoCanonical $canonical */
+        $canonical = $this->app->make(SeoCanonical::class);
+        $canonical->setPathArguments(['tag', $tag]);
+
         $this->list->filterByTags(h($tag));
         $this->view();
     }
@@ -322,9 +338,14 @@ class Controller extends BlockController
             $this->list->filterByPublicDate($start, '>=');
             $this->list->filterByPublicDate($end, '<=');
 
-            $seo = Core::make('helper/seo');
-            $date = ucfirst(\Punic\Calendar::getMonthName($month, 'wide', '', true).' '.$year);
+            /** @var Seo $seo */
+            $seo = $this->app->make('helper/seo');
+            $date = ucfirst(\Punic\Calendar::getMonthName($month, 'wide', '', true) . ' ' . $year);
             $seo->addTitleSegment($date);
+
+            /** @var SeoCanonical $canonical */
+            $canonical = $this->app->make(SeoCanonical::class);
+            $canonical->setPathArguments([$year, $month]);
         }
         $this->view();
     }
@@ -338,8 +359,8 @@ class Controller extends BlockController
             $pf = Feed::getByID($this->pfID);
         }
         if ($args['rss'] && !is_object($pf)) {
-            if (!$vs->handle($args['rssHandle'])) {
-                $e->add(t('Your RSS feed must have a valid URL, containing only letters, numbers or underscores'));
+            if (!$vs->alphanum($args['rssHandle'], false, true)) {
+                $e->add(t('Your RSS feed must have a valid URL, containing only letters, numbers or hyphens'));
             }
             if (!$vs->notempty($args['rssTitle'])) {
                 $e->add(t('Your RSS feed must have a valid title.'));
@@ -363,9 +384,9 @@ class Controller extends BlockController
         } elseif (Core::make('helper/validation/numbers')->integer($parameters[0])) {
             // then we're going to treat this as a year.
             $method = 'action_filter_by_date';
-            $parameters[0] = intval($parameters[0]);
+            $parameters[0] = (int) ($parameters[0]);
             if (isset($parameters[1])) {
-                $parameters[1] = intval($parameters[1]);
+                $parameters[1] = (int) ($parameters[1]);
             }
         } else {
             $parameters = $method = null;
@@ -378,6 +399,19 @@ class Controller extends BlockController
     {
         if (!$this->enableExternalFiltering) {
             return false;
+        }
+
+        if ($method === 'action_filter_by_date') {
+            // Parameter 0 must be set
+            if (!isset($parameters[0]) || $parameters[0] < 0 || $parameters[0] > 9999) {
+                return false;
+            }
+            // Parameter 1 can be null
+            if (isset($parameters[1])) {
+                if ($parameters[1] < 1 || $parameters[1] > 12) {
+                    return false;
+                }
+            }
         }
 
         return parent::isValidControllerTask($method, $parameters);
@@ -410,14 +444,18 @@ class Controller extends BlockController
             'paginate' => 0,
             'rss' => 0,
             'pfID' => 0,
-            'filterDateOption' => '',
+            'filterDateOption' => 'all',
             'cParentID' => null,
         ];
 
+        if (is_numeric($args['cParentID'])) {
+            $args['cParentID'] = (int) ($args['cParentID']);
+        }
+
         $args['num'] = ($args['num'] > 0) ? $args['num'] : 0;
-        $args['cThis'] = ($args['cParentID'] == $this->cID) ? '1' : '0';
-        $args['cThisParent'] = ($args['cParentID'] == $this->cPID) ? '1' : '0';
-        $args['cParentID'] = ($args['cParentID'] == 'OTHER') ? (empty($args['cParentIDValue']) ? null : $args['cParentIDValue']) : $args['cParentID'];
+        $args['cThis'] = ($args['cParentID'] === $this->cID) ? '1' : '0';
+        $args['cThisParent'] = ($args['cParentID'] === $this->cPID) ? '1' : '0';
+        $args['cParentID'] = ($args['cParentID'] === 'OTHER') ? (empty($args['cParentIDValue']) ? null : $args['cParentIDValue']) : $args['cParentID'];
         if (!$args['cParentID']) {
             $args['cParentID'] = 0;
         }
@@ -430,15 +468,16 @@ class Controller extends BlockController
         $args['filterByCustomTopic'] = ($args['topicFilter'] == 'custom') ? '1' : '0';
         $args['displayThumbnail'] = ($args['displayThumbnail']) ? '1' : '0';
         $args['displayAliases'] = ($args['displayAliases']) ? '1' : '0';
-        $args['truncateChars'] = intval($args['truncateChars']);
-        $args['paginate'] = intval($args['paginate']);
-        $args['rss'] = intval($args['rss']);
-        $args['ptID'] = intval($args['ptID']);
+        $args['truncateChars'] = (int) ($args['truncateChars']);
+        $args['paginate'] = (int) ($args['paginate']);
+        $args['rss'] = (int) ($args['rss']);
+        $args['ptID'] = (int) ($args['ptID']);
 
         if (!$args['filterByRelated']) {
             $args['relatedTopicAttributeKeyHandle'] = '';
         }
-        if (!$args['filterByCustomTopic']) {
+
+        if (!$args['filterByCustomTopic'] || !$this->app->make('helper/number')->isInteger($args['customTopicTreeNodeID'])) {
             $args['customTopicAttributeKeyHandle'] = '';
             $args['customTopicTreeNodeID'] = 0;
         }
@@ -489,7 +528,7 @@ class Controller extends BlockController
             $args['filterDateDays'] = null;
         }
 
-        $args['pfID'] = intval($args['pfID']);
+        $args['pfID'] = (int) ($args['pfID']);
         parent::save($args);
     }
 
@@ -502,18 +541,17 @@ class Controller extends BlockController
         if (empty($pages)) {
             if ($this->noResultsMessage) {
                 return false;
-            } else {
-                return true;
             }
-        } else {
-            if ($this->includeName || $this->includeDate || $this->displayThumbnail
+
+            return true;
+        }
+        if ($this->includeName || $this->includeDate || $this->displayThumbnail
                 || $this->includeDescription || $this->useButtonForLink
             ) {
-                return false;
-            } else {
-                return true;
-            }
+            return false;
         }
+
+        return true;
     }
 
     public function cacheBlockOutput()
@@ -527,5 +565,17 @@ class Controller extends BlockController
         }
 
         return  $this->btCacheBlockOutput;
+    }
+
+    protected function loadKeys()
+    {
+        $attributeKeys = [];
+        $keys = CollectionKey::getList();
+        foreach ($keys as $ak) {
+            if ($ak->getAttributeTypeHandle() == 'topics') {
+                $attributeKeys[] = $ak;
+            }
+        }
+        $this->set('attributeKeys', $attributeKeys);
     }
 }

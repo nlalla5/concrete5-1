@@ -1,10 +1,21 @@
 <?php defined('C5_EXECUTE') or die("Access Denied."); ?>
 
 <div class="form-group">
-    <div>
-    <label class="control-label"><?=$label?></label>
-    </div>
-    <?php
+    <?php if ($entry) { ?>
+        <div>
+            <?php
+            if (isset($association) && $association->getTargetEntity() && $association->getTargetEntity()->supportsCustomDisplayOrder()) {
+            ?>
+            <a href="<?= URL::to('/ccm/system/dialogs/express/association/reorder')?>?entryID=<?=$entry->getId()?>&amp;controlID=<?=$control->getId()?>"
+               dialog-title="<?= t('Reorder Entries') ?>" dialog-width="400" dialog-height="350"
+               class="dialog-launch btn btn-secondary btn-xs float-right"><?= t('Reorder Entries') ?></a>
+            <?php } ?>
+            <label class="control-label">
+                <?= $label ?></label>
+        </div>
+        <?php
+    }
+
     if (count($entities)) {
         ?>
         <?php foreach ($entities as $entity) {

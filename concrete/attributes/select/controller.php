@@ -23,10 +23,15 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
         'type' => 'text',
         'options' => ['default' => null, 'notnull' => false],
     ];
+
     private $akSelectAllowMultipleValues;
+
     private $akSelectAllowOtherValues;
+
     private $akHideNoneOption;
+
     private $akSelectOptionDisplayOrder;
+
     private $akDisplayMultipleValuesOnSelect;
 
     public function getIconFormatter()
@@ -173,7 +178,7 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
                     $opt->setOptionList($list);
                     $opt->setDisplayOrder($displayOrder);
                     $list->getOptions()->add($opt);
-                    ++$displayOrder;
+                    $displayOrder++;
                 }
             }
             $type->setOptionList($list);
@@ -219,7 +224,6 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
         }
         $this->set('selectedOptionIDs', $selectedOptionIDs);
         $this->set('selectedOptions', $selectedOptions);
-        $this->requireAsset('selectize');
     }
 
     public function search()
@@ -246,90 +250,94 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
             $option = $this->getOptionByID($data['atSelectOptionValue']);
             if (is_object($option)) {
                 return $this->createAttributeValue($option);
-            } else {
-                return $this->createAttributeValue(null);
             }
-        } else {
-            if ($akSelectAllowMultipleValues && !$akSelectAllowOtherValues) {
-                // checkbox list.  No new options.
-                $options = [];
-                if (is_array($data['atSelectOptionValue'])) {
-                    foreach ($data['atSelectOptionValue'] as $optionID) {
-                        $option = $this->getOptionByID($optionID);
-                        if (is_object($option)) {
-                            $options[] = $option;
-                        }
-                    }
-                }
 
-                return $this->createAttributeValue($options);
-            } else {
-                if (!$akSelectAllowMultipleValues && $akSelectAllowOtherValues) {
-                    // The post comes through in the select2 format. Either a SelectAttributeOption:ID item
-                    // or a new item.
-                    $option = false;
-                    if ($data['atSelectOptionValue']) {
-                        if (preg_match('/SelectAttributeOption\:(.+)/i',
-                            $data['atSelectOptionValue'], $matches)) {
-                            $option = $this->getOptionByID($matches[1]);
-                        } else {
-                            $option = $this->getOptionByValue(trim($data['atSelectOptionValue']), $this->attributeKey);
-                            if (!is_object($option)) {
-                                $displayOrder = 0;
-                                if ($optionList) {
-                                    $displayOrder = count($optionList->getOptions());
-                                }
-                                $option = new SelectValueOption();
-                                $option->setOptionList($optionList);
-                                $option->setIsEndUserAdded(true);
-                                $option->setDisplayOrder($displayOrder);
-                                $option->setSelectAttributeOptionValue(trim($data['atSelectOptionValue']));
-                            }
-                        }
-                    }
+            return $this->createAttributeValue(null);
+        }
+        if ($akSelectAllowMultipleValues && !$akSelectAllowOtherValues) {
+            // checkbox list.  No new options.
+            $options = [];
+            if (is_array($data['atSelectOptionValue'])) {
+                foreach ($data['atSelectOptionValue'] as $optionID) {
+                    $option = $this->getOptionByID($optionID);
                     if (is_object($option)) {
-                        return $this->createAttributeValue($option);
-                    } else {
-                        return $this->createAttributeValue(null);
-                    }
-                } else {
-                    if ($akSelectAllowMultipleValues && $akSelectAllowOtherValues) {
-                        // The post comes through in the select2 format. A comma-separated
-                        // list of SelectAttributeOption:ID items and new items.
-                        $options = [];
-                        if ($data['atSelectOptionValue']) {
-                            foreach (explode(',', $data['atSelectOptionValue']) as $value) {
-                                if (preg_match('/SelectAttributeOption\:(.+)/i', $value, $matches)) {
-                                    $option = $this->getOptionByID($matches[1]);
-                                } else {
-                                    $option = $this->getOptionByValue(trim($value), $this->attributeKey);
-                                    if (!is_object($option)) {
-                                        $displayOrder = 0;
-                                        if ($optionList) {
-                                            $displayOrder = count($optionList->getOptions());
-                                        }
-                                        $option = new SelectValueOption();
-                                        $option->setOptionList($optionList);
-                                        $option->setDisplayOrder($displayOrder);
-                                        $option->setSelectAttributeOptionValue(trim($value));
-                                        $option->setIsEndUserAdded(true);
-                                    }
-                                }
-
-                                if (is_object($option)) {
-                                    $options[] = $option;
-                                }
-                            }
-                        }
-
-                        if (count($options)) {
-                            return $this->createAttributeValue($options);
-                        } else {
-                            return $this->createAttributeValue(null);
-                        }
+                        $options[] = $option;
                     }
                 }
             }
+
+            return $this->createAttributeValue($options);
+        }
+        if (!$akSelectAllowMultipleValues && $akSelectAllowOtherValues) {
+            // The post comes through in the select2 format. Either a SelectAttributeOption:ID item
+            // or a new item.
+            $option = false;
+            if ($data['atSelectOptionValue']) {
+                if (preg_match(
+                    '/SelectAttributeOption\:(.+)/i',
+                    $data['atSelectOptionValue'],
+                    $matches
+                )) {
+                    $option = $this->getOptionByID($matches[1]);
+                } else {
+                    $option = $this->getOptionByValue(trim($data['atSelectOptionValue']), $this->attributeKey);
+                    if (!is_object($option)) {
+                        $displayOrder = 0;
+                        if ($optionList) {
+                            $displayOrder = count($optionList->getOptions());
+                        }
+                        $option = new SelectValueOption();
+                        $option->setOptionList($optionList);
+                        $option->setIsEndUserAdded(true);
+                        $option->setDisplayOrder($displayOrder);
+                        $option->setSelectAttributeOptionValue(trim($data['atSelectOptionValue']));
+                    }
+                }
+            }
+            if (is_object($option)) {
+                return $this->createAttributeValue($option);
+            }
+
+            return $this->createAttributeValue(null);
+        }
+        if ($akSelectAllowMultipleValues && $akSelectAllowOtherValues) {
+            // The post comes through in the select2 format. A comma-separated
+            // list of SelectAttributeOption:ID items and new items.
+            $options = [];
+            if ($data['atSelectOptionValue']) {
+                if (!is_array($data['atSelectOptionValue'])) {
+                    $data['atSelectOptionValue'] = explode(',', $data['atSelectOptionValue']);
+                }
+
+                foreach ($data['atSelectOptionValue'] as $value) {
+                    if (preg_match('/SelectAttributeOption\:(.+)/i', $value, $matches)) {
+                        $option = $this->getOptionByID($matches[1]);
+                    } else {
+                        $option = $this->getOptionByValue(trim($value), $this->attributeKey);
+                        if (!is_object($option)) {
+                            $displayOrder = 0;
+                            if ($optionList) {
+                                $displayOrder = count($optionList->getOptions());
+                            }
+                            $option = new SelectValueOption();
+                            $option->setOptionList($optionList);
+                            $option->setDisplayOrder($displayOrder);
+                            $option->setSelectAttributeOptionValue(trim($value));
+                            $option->setIsEndUserAdded(true);
+                        }
+                    }
+
+                    if (is_object($option)) {
+                        $options[] = $option;
+                    }
+                }
+            }
+
+            if (count($options)) {
+                return $this->createAttributeValue($options);
+            }
+
+            return $this->createAttributeValue(null);
         }
     }
 
@@ -349,11 +357,10 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
     {
         $orm = $this->entityManager;
         $repository = $orm->getRepository('\Concrete\Core\Entity\Attribute\Value\Value\SelectValueOption');
-        $option = $repository->findOneBy([
+
+        return $repository->findOneBy([
             'avSelectOptionID' => $id,
         ]);
-
-        return $option;
     }
 
     public function getOptionByValue($value, $attributeKey = false)
@@ -487,7 +494,7 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
             if (($i + 1) < count($optionQuery)) {
                 $multiString .= 'OR ';
             }
-            ++$i;
+            $i++;
         }
         $list->filter(false, '(' . $multiString . ')');
 
@@ -526,10 +533,11 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
         $values = [];
         // now, if the current instance of the attribute key allows us to do autocomplete, we return all the values
         if ($this->akSelectAllowOtherValues) {
-            $options = $this->getOptions($_GET['q']);
+            $term = $this->request->request->get('term');
+            $options = $this->getOptions($term);
             foreach ($options as $opt) {
                 $o = new \stdClass();
-                $o->id = 'SelectAttributeOption:' . $opt->getSelectAttributeOptionID();
+                $o->value = 'SelectAttributeOption:' . $opt->getSelectAttributeOptionID();
                 $o->text = $opt->getSelectAttributeOptionValue(false);
                 $values[] = $o;
             }
@@ -540,9 +548,32 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
 
     public function getOptionUsageArray($parentPage = false, $limit = 9999)
     {
+        $now = $this->app->make('date')->getOverridableNow();
         $db = Database::get();
-        $q = 'select atSelectOptions.value, atSelectOptions.avSelectOptionID, count(atSelectOptions.avSelectOptionID) as total from Pages inner join CollectionVersions on (Pages.cID = CollectionVersions.cID and CollectionVersions.cvIsApproved = 1) inner join CollectionAttributeValues on (CollectionVersions.cID = CollectionAttributeValues.cID and CollectionVersions.cvID = CollectionAttributeValues.cvID) inner join atSelectOptionsSelected on (atSelectOptionsSelected.avID = CollectionAttributeValues.avID) inner join atSelectOptions on atSelectOptionsSelected.avSelectOptionID = atSelectOptions.avSelectOptionID where Pages.cIsActive = 1 and CollectionAttributeValues.akID = ? ';
-        $v = [$this->attributeKey->getAttributeKeyID()];
+        $q = <<<'EOT'
+select
+    atSelectOptions.value,
+    atSelectOptions.avSelectOptionID,
+    count(atSelectOptions.avSelectOptionID) as total
+from
+    Pages
+    inner join CollectionVersions
+        on Pages.cID = CollectionVersions.cID
+        and CollectionVersions.cvIsApproved = 1
+        and (CollectionVersions.cvPublishDate is null or CollectionVersions.cvPublishDate <= ?)
+        and (CollectionVersions.cvPublishEndDate is null or CollectionVersions.cvPublishEndDate >= ?)
+    inner join CollectionAttributeValues
+        on CollectionVersions.cID = CollectionAttributeValues.cID and CollectionVersions.cvID = CollectionAttributeValues.cvID
+    inner join atSelectOptionsSelected
+        on (atSelectOptionsSelected.avID = CollectionAttributeValues.avID)
+    inner join atSelectOptions
+        on atSelectOptionsSelected.avSelectOptionID = atSelectOptions.avSelectOptionID
+where
+    Pages.cIsActive = 1
+    and CollectionAttributeValues.akID = ?
+EOT
+        ;
+        $v = [$now, $now, $this->attributeKey->getAttributeKeyID()];
         if (is_object($parentPage)) {
             $v[] = $parentPage->getCollectionID();
             $q .= 'and cParentID = ?';
@@ -568,25 +599,26 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
             $option = $value;
         } else {
             $option = $em->getRepository('\Concrete\Core\Entity\Attribute\Value\Value\SelectValueOption')
-                ->findOneByValue($value);
+                ->findOneByValue($value)
+            ;
         }
-        if (is_object($option)) {
-            $column = 'ak_' . $this->attributeKey->getAttributeKeyHandle();
-            $qb = $list->getQueryObject();
-            $qb->andWhere(
-                $comparison === '!=' || $comparison === '<>'
-                    ? $qb->expr()->notLike($column, ':optionValue_' . $this->attributeKey->getAttributeKeyID())
-                    : $qb->expr()->like($column, ':optionValue_' . $this->attributeKey->getAttributeKeyID())
-            );
-            $qb->setParameter('optionValue_' . $this->attributeKey->getAttributeKeyID(), "%\n" . $option->getSelectAttributeOptionValue(false) . "\n%");
-        }
+
+        $optionValue = is_object($option) ? $option->getSelectAttributeOptionValue(false) : $value;
+        $column = 'ak_' . $this->attributeKey->getAttributeKeyHandle();
+        $qb = $list->getQueryObject();
+        $qb->andWhere(
+            $comparison === '!=' || $comparison === '<>'
+                ? $qb->expr()->notLike($column, ':optionValue_' . $this->attributeKey->getAttributeKeyID())
+                : $qb->expr()->like($column, ':optionValue_' . $this->attributeKey->getAttributeKeyID())
+        );
+        $qb->setParameter('optionValue_' . $this->attributeKey->getAttributeKeyID(), "%\n" . $optionValue . "\n%");
     }
 
     /**
      * Returns a list of available options optionally filtered by an sql $like statement ex: startswith%.
      *
      * @param string $like
-     * @param null|mixed $keywords
+     * @param mixed|null $keywords
      */
     public function getOptions($keywords = null)
     {
@@ -663,8 +695,10 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
             $akDisplayMultipleValuesOnSelect = 0;
         }
 
-        if (isset($data['akSelectOptionDisplayOrder']) && in_array($data['akSelectOptionDisplayOrder'],
-                ['display_asc', 'alpha_asc', 'popularity_desc'])
+        if (isset($data['akSelectOptionDisplayOrder']) && in_array(
+            $data['akSelectOptionDisplayOrder'],
+            ['display_asc', 'alpha_asc', 'popularity_desc']
+        )
         ) {
             $akSelectOptionDisplayOrder = $data['akSelectOptionDisplayOrder'];
         } else {
@@ -758,7 +792,7 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
         } else {
             $options = [];
             foreach ($value->getSelectedOptions() as $selectedOption) {
-                /* @var SelectValueOption $selectedOption */
+                /** @var SelectValueOption $selectedOption */
                 $options[] = $selectedOption->getSelectAttributeOptionValue();
             }
             $result = implode("\n", $options);
@@ -789,7 +823,7 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
             }
         } else {
             $settings = $this->getAttributeKeySettings();
-            /* @var SelectSettings $settings */
+            /** @var SelectSettings $settings */
             if ($numOptions > 1 && !$settings->getAllowMultipleValues()) {
                 $warnings->add(t('The Select Attribute with handle "%s" does not support multiple options: only the first one will be imported', $this->attributeKey->getAttributeKeyHandle()));
                 $firstOptionText = array_shift($optionTexts);
@@ -846,9 +880,7 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
 
     protected function load()
     {
-        /*
-         * @var \Concrete\Core\Entity\Attribute\Key\SelectKey
-         */
+        /** @var \Concrete\Core\Entity\Attribute\Key\SelectKey */
         $ak = $this->getAttributeKey();
         if (!is_object($ak)) {
             return false;
@@ -890,7 +922,7 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
         } else {
             $values = $value;
         }
-        
+
         $response = [];
         foreach ($values as $value) {
             $value = trim($value);
@@ -938,7 +970,7 @@ class Controller extends AttributeTypeController implements SimpleTextExportable
 
             if (is_object($opt)) {
                 $options[] = $opt;
-                ++$displayOrder;
+                $displayOrder++;
             }
         }
 

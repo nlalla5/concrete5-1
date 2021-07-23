@@ -1,14 +1,21 @@
 <?php
+
 namespace Concrete\Controller\SinglePage\Dashboard\System\Express;
 
 use Concrete\Core\Attribute\Category\SearchIndexer\ExpressSearchIndexer;
 use Concrete\Core\Entity\Express\Entity;
 use Concrete\Core\Entity\Express\Form;
+use Concrete\Core\Express\Command\RescanEntityCommand;
+use Concrete\Core\Express\Entry\Manager;
 use Concrete\Core\Page\Controller\DashboardPageController;
+use Concrete\Core\Permission\Checker;
+use Concrete\Core\Site\InstallationService;
 use Concrete\Core\Support\Facade\Express;
 use Concrete\Core\Tree\Node\Node;
-use Concrete\Core\Tree\Type\ExpressEntryResults;
-use Doctrine\DBAL\Schema\Schema;
+use Concrete\Core\Tree\Node\Type\ExpressEntryResults;
+use Concrete\Core\Tree\Type\ExpressEntryResults as ExpressEntryResultsTree;
+use Concrete\Core\Validation\CSRF\Token;
+use Concrete\Core\Routing\Redirect;
 
 class Entities extends DashboardPageController
 {
@@ -79,14 +86,14 @@ class Entities extends DashboardPageController
                 }
 
                 $this->flash('success', t('Object added successfully.'));
-                $this->redirect('/dashboard/system/express/entities', 'view_entity', $entity->getId());
+                return Redirect::to('/dashboard/system/express/entities', 'view_entity', $entity->getId());
             }
         }
 
         $r = $this->entityManager->getRepository('\Concrete\Core\Entity\Express\Entity');
         $entities = $r->findAll(array(), array('name' => 'asc'));
         $select = ['' => t('** Choose Entity')];
-        foreach($entities as $entity) {
+        foreach ($entities as $entity) {
             $select[$entity->getID()] = $entity->getEntityDisplayName();
         }
         $this->set('entities', $select);
@@ -96,7 +103,13 @@ class Entities extends DashboardPageController
     public function view()
     {
         $r = $this->entityManager->getRepository('\Concrete\Core\Entity\Express\Entity');
-        $entities = $r->findAll(array(), array('name' => 'asc'));
+        $entities = [];
+        foreach($r->findBy(array(), array('name' => 'asc')) as $entity) {
+            $permissions = new Checker($entity);
+            if ($permissions->canViewExpressEntries()) {
+                $entities[] = $entity;
+            }
+        }
         $this->set('entities', $entities);
     }
 
@@ -116,46 +129,111 @@ class Entities extends DashboardPageController
             $this->entityManager->remove($entity);
             $this->entityManager->flush();
             $this->flash('success', t('Entity deleted successfully.'));
-            $this->redirect('/dashboard/system/express/entities');
+            return Redirect::to('/dashboard/system/express/entities');
         }
 
     }
+
+    public function rescan_entries()
+    {
+        $entity = $this->entityManager->getRepository('Concrete\Core\Entity\Express\Entity')
+            ->findOneById($this->request->request->get('entity_id'));
+
+        if (!is_object($entity)) {
+            $this->error->add(t("Invalid express entity."));
+        }
+        if (!$this->token->validate('rescan_entries')) {
+            $this->error->add($this->token->getErrorMessage());
+        }
+        if (!$this->error->has()) {
+            $command = new RescanEntityCommand($entity);
+            $this->app->executeCommand($command);
+
+            $this->flash('success', t('Entity rescanned successfully.'));
+            return Redirect::to('/dashboard/system/express/entities', 'view_entity', $entity->getId());
+        }
+        $this->view_entity($this->request->request->get('entity_id'));
+    }
+
 
     public function view_entity($id = null)
     {
         $r = $this->entityManager->getRepository('\Concrete\Core\Entity\Express\Entity');
         $entity = $r->findOneById($id);
         if (is_object($entity)) {
+            $resultsNode = ExpressEntryResults::getByID($entity->getEntityResultsNodeId());
             $this->set('entity', $entity);
             $this->set('pageTitle', t('Object Details'));
+            $this->set('isMultisiteEnabled', $this->app->make(InstallationService::class)->isMultisiteEnabled());
+            $this->set('resultsNode', $resultsNode);
+            $this->set('entryManager', $this->app->make(Manager::class));
+            $this->set('sites', $this->app->make('site')->getList());
             $this->render('/dashboard/system/express/entities/view_details');
         } else {
             $this->view();
         }
     }
 
+    /**
+     * @return \Concrete\Core\Routing\RedirectResponse
+     */
+    public function delete_entries()
+    {
+        /** @var \Concrete\Core\Entity\Express\Entity $entity */
+        $entity = $this->entityManager->getRepository('\Concrete\Core\Entity\Express\Entity')->findOneById($this->request->request->get('entity_id'));
+
+        if (!is_object($entity)) {
+            $this->error->add(t('Invalid express entity.'));
+        }
+
+        if (!$this->token->validate('clear_entries')) {
+            $this->error->add($this->token->getErrorMessage());
+        }
+
+        foreach ($entity->getEntries() as $entry){
+            $this->entityManager->remove($entry);
+        }
+
+        $this->entityManager->flush();
+
+        $this->flash('success', t('All Entries were successfully cleared.'));
+        return Redirect::to('/dashboard/system/express/entities', 'view_entity', $entity->getId());
+    }
+
+    public function clear_entries($id = null)
+    {
+        $entity = $this->entityManager->getRepository('\Concrete\Core\Entity\Express\Entity')->findOneById($id);
+
+        if (!is_object($entity)) {
+            $this->error->add(t('Invalid express entity.'));
+        }
+
+        $this->set('entity', $entity);
+        $this->set('token', new Token());
+        $this->render('/dashboard/system/express/entities/clear_entries');
+    }
+
     public function edit($id = null)
     {
-        $tree = ExpressEntryResults::get();
+        $tree = ExpressEntryResultsTree::get();
         $this->set('tree', $tree);
-        $this->requireAsset('core/topics');
         $r = $this->entityManager->getRepository('\Concrete\Core\Entity\Express\Entity');
         $this->entity = $r->findOneById($id);
         if (is_object($this->entity)) {
             $node = Node::getByID($this->entity->getEntityResultsNodeId());
             if (is_object($node)) {
                 $folder = $node->getTreeNodeParentObject();
-                $this->set('folder', $folder);
+                $this->set('resultsParentFolder', $folder);
             }
             $forms = array('' => t('** Select Form'));
             $defaultViewFormID = 0;
             $defaultEditFormID = 0;
             $ownedByID = 0;
             $entities = array('' => t('** No Owner'));
-            foreach($r->findAll() as $ownedByEntity) {
+            foreach ($r->findAll() as $ownedByEntity) {
                 $entities[$ownedByEntity->getID()] = $ownedByEntity->getName();
             }
-            foreach($this->entity->getForms() as $form) {
+            foreach ($this->entity->getForms() as $form) {
                 $forms[$form->getID()] = $form->getName();
             }
             if (is_object($this->entity->getDefaultViewForm())) {
@@ -167,6 +245,7 @@ class Entities extends DashboardPageController
             if (is_object($this->entity->getOwnedBy())) {
                 $ownedByID = $this->entity->getOwnedBy()->getID();
             }
+            $this->set('isMultisiteEnabled', $this->app->make(InstallationService::class)->isMultisiteEnabled());
             $this->set('defaultEditFormID', $defaultEditFormID);
             $this->set('defaultViewFormID', $defaultViewFormID);
             $this->set('ownedByID', $ownedByID);
@@ -207,7 +286,7 @@ class Entities extends DashboardPageController
             $this->error->add(t('You must give your data object a name.'), 'name');
         }
 
-        if (!$this->request->request->get('entity_results_node_id')) {
+        if (!$this->request->request->get('entity_results_parent_node_id')) {
             $this->error->add(t('You must choose where the results for your entity are going live.'));
         }
 
@@ -216,7 +295,7 @@ class Entities extends DashboardPageController
         }
         $viewForm = null;
         $editForm = null;
-        foreach($this->entity->getForms() as $form) {
+        foreach ($this->entity->getForms() as $form) {
             if ($form->getID() == $this->request->request->get('default_edit_form_id')) {
                 $editForm = $form;
             }
@@ -234,6 +313,9 @@ class Entities extends DashboardPageController
 
             $previousEntity = clone $entity;
 
+            /**
+             * @var $entity Entity
+             */
             $entity->setName($name);
             $entity->setHandle($handle);
             $entity->setPluralHandle($this->request->request->get('plural_handle'));
@@ -241,6 +323,8 @@ class Entities extends DashboardPageController
             $entity->setDescription($this->request->request->get('description'));
             $entity->setDefaultViewForm($viewForm);
             $entity->setDefaultEditForm($editForm);
+            $entity->setUseSeparateSiteResultBuckets(
+                $this->request->request->get('use_separate_site_result_buckets') ? true : false);
             $entity->setSupportsCustomDisplayOrder(false);
 
             if ($this->request->request->get('supports_custom_display_order')) {
@@ -257,13 +341,13 @@ class Entities extends DashboardPageController
             $indexer->updateRepository($previousEntity, $entity);
 
             $resultsNode = Node::getByID($entity->getEntityResultsNodeId());
-            $folder = Node::getByID($this->request->request('entity_results_node_id'));
+            $folder = Node::getByID($this->request->request('entity_results_parent_node_id'));
             if (is_object($folder)) {
                 $resultsNode->move($folder);
             }
 
             $this->flash('success', t('Object updated successfully.'));
-            $this->redirect('/dashboard/system/express/entities', 'view_entity', $entity->getId());
+            return Redirect::to('/dashboard/system/express/entities', 'view_entity', $entity->getId());
         }
     }
 

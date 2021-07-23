@@ -34,16 +34,21 @@ class ParentPageField extends AbstractField
     {
         if ($this->data['cParentIDSearchField'] > 0) {
             $pc = \Page::getByID($this->data['cParentIDSearchField']);
-            if ($pc->isSystemPage()) {
-                $list->includeSystemPages();
-                $list->includeInactivePages();
-            }
-            $list->setSiteTreeObject($pc->getSiteTreeObject());
-            if ($this->data['cParentAll'] == 1) {
-                $cPath = $pc->getCollectionPath();
-                $list->filterByPath($cPath);
-            } else {
-                $list->filterByParentID($this->data['cParentIDSearchField']);
+            if ($pc && !$pc->isError()) {
+                if ($pc->isSystemPage()) {
+                    $list->includeSystemPages();
+                    $list->includeInactivePages();
+                }
+                $siteObject = $pc->getSiteTreeObject();
+                if (is_object($siteObject)) {
+                    $list->setSiteTreeObject($siteObject);
+                }
+                if ($this->data['cParentAll'] == 1) {
+                    $cPath = $pc->getCollectionPath();
+                    $list->filterByPath($cPath);
+                } else {
+                    $list->filterByParentID($this->data['cParentIDSearchField']);
+                }
             }
         }
     }
@@ -52,11 +57,11 @@ class ParentPageField extends AbstractField
     {
         $ps = \Core::make("helper/form/page_selector");
         $form = \Core::make("helper/form");
-        $html = $ps->selectPage('cParentIDSearchField', $this->data['cParentIDSearchField']);
-        $html .= '<div>';
+        $html = $ps->selectPage('cParentIDSearchField', $this->data['cParentIDSearchField'], ['askIncludeSystemPages' => true]);
+        $html .= '<div class="form-group mt-3">';
         $html .= '<label class="control-label">' . t('Search All Children?') . '</label>';
-        $html .= '<div class="radio"><label>' . $form->radio('cParentAll', 0, false) . ' ' . t('No') . '</label></div>';
-        $html .= '<div class="radio"><label>' . $form->radio('cParentAll', 1, false) . ' ' . t('Yes') . '</label></div>';
+        $html .= '<div class="form-check">' . $form->radio('cParentAll', 0, $this->data['cParentAll']) . ' <label class="form-check-label" for="cParentAll1">' . t('No') . '</label></div>';
+        $html .= '<div class="form-check">' . $form->radio('cParentAll', 1, $this->data['cParentAll']) . ' <label class="form-check-label" for="cParentAll2">' . t('Yes') . '</label></div>';
         $html .= '</div>';
         return $html;
     }

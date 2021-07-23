@@ -7,12 +7,14 @@ use Concrete\Core\Block\BlockController;
 use Concrete\Core\Calendar\Calendar;
 use Concrete\Core\Calendar\CalendarServiceProvider;
 use Concrete\Core\Calendar\Event\EventOccurrenceList;
+use Concrete\Core\Feature\Features;
+use Concrete\Core\Feature\UsesFeatureInterface;
 use Concrete\Core\Html\Object\HeadLink;
 use Core;
 use Page;
 use Symfony\Component\HttpFoundation\JsonResponse;
 
-class Controller extends BlockController
+class Controller extends BlockController implements UsesFeatureInterface
 {
     public $helpers = ['form'];
 
@@ -85,6 +87,13 @@ class Controller extends BlockController
         $this->eventAttributes = EventKey::getList();
     }
 
+    public function getRequiredFeatures(): array
+    {
+        return [
+            Features::CALENDAR
+        ];
+    }
+
     public function loadData()
     {
         $viewTypes = [
@@ -131,7 +140,7 @@ class Controller extends BlockController
                     $list->filterByAttribute($ak->getAttributeKeyHandle(), $this->filterByTopicID);
                 }
             }
-            $list->filterByStartTimeAfter(strtotime($start));
+            $list->filterByEndTimeAfter(strtotime($start));
             $list->filterByStartTimeBefore(strtotime($end));
             $results = $list->getResults();
 
@@ -247,7 +256,7 @@ class Controller extends BlockController
         if (is_object($event)) {
             switch ($key) {
                 case 'title':
-                    return '<h3>' . $event->getName() . '</h3>';
+                    return '<h3>' . h($event->getName()) . '</h3>';
                 case 'description':
                     return $event->getDescription();
                 case 'date':
@@ -288,7 +297,6 @@ class Controller extends BlockController
         $this->set('viewTypesSelected', (array) json_decode($this->viewTypes));
         $this->set('viewTypesOrder', (array) json_decode($this->viewTypesOrder));
         $this->set('lightboxPropertiesSelected', $this->getSelectedLightboxProperties());
-        $this->requireAsset('core/topics');
         $calendars = array_filter(Calendar::getList(), function ($calendar) {
             $p = new \Permissions($calendar);
 
@@ -370,11 +378,6 @@ class Controller extends BlockController
         $calendar = $this->getCalendar();
         if (is_object($calendar)) {
             $permissions = new \Permissions($calendar);
-            $this->requireAsset('fullcalendar');
-            if ($this->supportsLightbox()) {
-                $this->requireAsset('core/lightbox');
-            }
-
             if ($permissions->canAccessCalendarRssFeed()) {
                 $link = new HeadLink(\URL::route(['/feed', 'calendar'], $this->getCalendar()->getID()), 'alternate', 'application/rss+xml');
                 $this->addHeaderItem($link);

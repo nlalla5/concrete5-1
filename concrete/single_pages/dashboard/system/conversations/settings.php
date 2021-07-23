@@ -4,8 +4,10 @@ $form = \Core::make('helper/form');
 $file = \Core::make('helper/file');
 $token = \Core::make('token');
 
-echo Core::make('helper/concrete/dashboard')->getDashboardPaneHeaderWrapper(t('Conversations Settings'), false,
-    'span8 offset2', false);
+/**
+ * @var string[] $file_access_file_types_blacklist
+ */
+
 ?>
 <form action="<?= $view->action('save') ?>" method='post'>
     <?php $token->output('conversations.settings.save') ?>
@@ -15,11 +17,9 @@ echo Core::make('helper/concrete/dashboard')->getDashboardPaneHeaderWrapper(t('C
         <p class="help-block"><?php echo t('Note: These settings can be overridden in the block edit form for individual conversations.'); ?></p>
         <div class="form-group">
             <label class="control-label"><?= t('Attachments') ?></label>
-            <div class="checkbox">
-                <label>
-                    <?= $form->checkbox('attachmentsEnabled', 1, $attachmentsEnabled) ?>
-                    <?= t('Enable File Attachments') ?>
-                </label>
+            <div class="form-check">
+                <?= $form->checkbox('attachmentsEnabled', 1, $attachmentsEnabled) ?>
+                <?= $form->label('attachmentsEnabled', t('Enable File Attachments'), ['class'=>'form-check-label']) ?>
             </div>
         </div>
         <div class="form-group">
@@ -41,13 +41,23 @@ echo Core::make('helper/concrete/dashboard')->getDashboardPaneHeaderWrapper(t('C
         <div class="form-group">
             <label class="control-label"><?= t('Allowed File Extensions (Comma separated, no periods).') ?></label>
             <?= $form->textarea('fileExtensions', $fileExtensions) ?>
+            <?php
+            if ($file_access_file_types_blacklist !== []) {
+                ?>
+                <div class="text-muted small">
+                    <?= t('These file extensions will always be blocked: %s', '<code>' . implode('</code>, <code>', $file_access_file_types_blacklist) . '</code>') ?><br />
+                    <?= t('If you want to unblock these extensions, you have to manually set the %s configuration key.', '<code>conversations.files.disallowed_types</code>') ?>
+                </div>
+                <?php
+            }
+            ?>
         </div>
     </fieldset>
     <fieldset>
         <legend><?= t('Editor') ?></legend>
         <div class="form-group">
             <?= $form->label('activeEditor', t('Active Conversation Editor')) ?>
-            <?= Loader::helper('form')->select('activeEditor', $editors, $active); ?>
+            <?= $form->select('activeEditor', $editors, $active); ?>
         </div>
     </fieldset>
     <fieldset>
@@ -59,10 +69,9 @@ echo Core::make('helper/concrete/dashboard')->getDashboardPaneHeaderWrapper(t('C
         <div class="form-group">
             <label class="control-label"><?= t('Subscribe Option') ?></label>
 
-            <div class="checkbox">
-                <label><?= $form->checkbox('subscriptionEnabled', 1, $subscriptionEnabled) ?>
-                    <?= t('Yes, allow registered users to choose to subscribe to conversations.') ?>
-                </label>
+            <div class="form-check">
+                <?= $form->checkbox('subscriptionEnabled', 1, $subscriptionEnabled) ?>
+                <?= $form->label('subscriptionEnabled',t('Yes, allow registered users to choose to subscribe to conversations.'), ['class'=>'form-check-label']) ?>
             </div>
         </div>
     </fieldset>

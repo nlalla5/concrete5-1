@@ -1,6 +1,7 @@
 <?php
 namespace Concrete\Core\Area;
 
+use Concrete\Core\Support\Facade\Application;
 use Core;
 use Database;
 use Concrete\Core\Foundation\ConcreteObject;
@@ -9,7 +10,6 @@ use PermissionKey;
 use View;
 use Permissions;
 use Page;
-use User;
 use Concrete\Core\Block\View\BlockView;
 use Concrete\Core\Localization\Localization;
 
@@ -398,26 +398,6 @@ class Area extends ConcreteObject implements \Concrete\Core\Permission\ObjectInt
     }
 
     /**
-     * @param string $task
-     * @param null $alternateHandler
-     *
-     * @return string
-     */
-    public function getAreaUpdateAction($task = 'update', $alternateHandler = null)
-    {
-        $valt = Core::make('helper/validation/token');
-        $token = '&'.$valt->getParameter();
-        $c = $this->getAreaCollectionObject();
-        if ($alternateHandler) {
-            $str = $alternateHandler."?atask={$task}&cID=".$c->getCollectionID().'&arHandle='.$this->getAreaHandle().$token;
-        } else {
-            $str = DIR_REL.'/'.DISPATCHER_FILENAME.'?atask='.$task.'&cID='.$c->getCollectionID().'&arHandle='.$this->getAreaHandle().$token;
-        }
-
-        return $str;
-    }
-
-    /**
      * @param Page $c
      */
     public function refreshCache($c)
@@ -555,7 +535,6 @@ class Area extends ConcreteObject implements \Concrete\Core\Permission\ObjectInt
         while ($row = $r->FetchRow()) {
             $handles[] = $row['arHandle'];
         }
-        $r->Free();
         unset($r);
         unset($db);
 
@@ -826,7 +805,7 @@ class Area extends ConcreteObject implements \Concrete\Core\Permission\ObjectInt
      * displays the Area in the page
      * ex: $a = new Area('Main'); $a->display($c);.
      *
-     * @param Page $c
+     * @param \Concrete\Core\Page\Page|bool $c
      * @param Block[] $alternateBlockArray optional array of blocks to render instead of default behavior
      *
      * @return bool
@@ -849,8 +828,6 @@ class Area extends ConcreteObject implements \Concrete\Core\Permission\ObjectInt
         }
 
         $blocksToDisplay = ($alternateBlockArray) ? $alternateBlockArray : $this->getAreaBlocksArray();
-
-        $u = new User();
 
         // The translatable texts in the area header/footer need to be printed
         // out in the system language.

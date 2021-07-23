@@ -1,37 +1,26 @@
 <?php
+
 namespace Concrete\Core\Express\Form\Control\View;
 
 use Concrete\Core\Entity\Express\Control\AssociationControl;
 use Concrete\Core\Entity\Express\Control\Control;
-use Concrete\Core\Express\EntryList;
 use Concrete\Core\Express\Form\Context\ContextInterface;
 use Concrete\Core\Filesystem\TemplateLocator;
 
 class AssociationFormView extends AssociationView
 {
-
     protected $association;
 
     public function __construct(ContextInterface $context, Control $control)
     {
         parent::__construct($context, $control);
-        $this->addScopeItem('entities', $this->allEntities);
-        $this->addScopeItem('selectedEntities', $this->selectedEntities);
-    }
+        $this->addScopeItem('allEntries', $this->allEntries);
+        $this->addScopeItem('selectedEntries', $this->selectedEntries);
 
-    /**
-     * @param AssociationControl $control
-     * @return string
-     */
-    protected function getFormFieldElement(AssociationControl $control)
-    {
-        $class = get_class($control->getAssociation());
-        $class = strtolower(str_replace(array('Concrete\\Core\\Entity\\Express\\', 'Association'), '', $class));
-        if (substr($class, -4) == 'many') {
-            return 'select_multiple';
-        } else {
-            return 'select';
-        }
+        // @deprecated – use allEntries and selectedEntries instead
+        $this->addScopeItem('entities', $this->allEntries);
+        $this->addScopeItem('selectedEntities', $this->selectedEntries);
+        $this->setIsRequired($control->isRequired());
     }
 
     public function createTemplateLocator()
@@ -40,16 +29,38 @@ class AssociationFormView extends AssociationView
         $element = $this->getFormFieldElement($this->control);
         $association = $this->association;
         if ($association->isOwningAssociation()) {
-            if ($association->getTargetEntity()->supportsCustomDisplayOrder()) {
-                $element = 'select_multiple_reorder';
-            } else {
+            if ($this->entry) {
                 $element = 'view';
+            } else {
+                $element = 'view_entry_missing';
             }
         }
         $locator = new TemplateLocator('association/' . $element);
+
         return $locator;
     }
 
+    /**
+     * @param AssociationControl $control
+     *
+     * @return string
+     */
+    protected function getFormFieldElement(AssociationControl $control)
+    {
+        $mode = $control->getEntrySelectorMode();
+        $class = get_class($control->getAssociation());
+        $class = strtolower(str_replace(['Concrete\\Core\\Entity\\Express\\', 'Association'], '', $class));
+        if ('many' == substr($class, -4)) {
+            if (AssociationControl::TYPE_ENTRY_SELECTOR == $mode) {
+                return 'entry_selector_multiple';
+            }
 
+            return 'select_multiple';
+        }
+        if (AssociationControl::TYPE_ENTRY_SELECTOR == $mode) {
+            return 'entry_selector';
+        }
 
+        return 'select';
+    }
 }

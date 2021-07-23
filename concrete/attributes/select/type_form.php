@@ -1,5 +1,7 @@
 <?php
-
+if (!isset($defaultNewOptionNm)) {
+    $defaultNewOptionNm = null;
+}
 function getAttributeOptionHTML($v)
 {
     if ($v == 'TEMPLATE') {
@@ -35,7 +37,7 @@ function getAttributeOptionHTML($v)
 }
     ?>
 				<input id="akSelectValueField_<?php echo $akSelectValueID?>" onkeypress="ccmAttributesHelper.keydownHandler(event);" class="akSelectValueField form-control" data-select-value-id="<?php echo $akSelectValueID;
-    ?>" name="akSelectValue_<?php echo $akSelectValueID?>" type="text" value="<?php echo $akSelectValue?>" size="40" />
+    ?>" name="akSelectValue_<?php echo $akSelectValueID?>" type="text" value="<?php echo h($akSelectValue)?>" size="40" />
 			</span>		
 			<div class="rightCol">
 				<input class="btn btn-default" type="button" onClick="ccmAttributesHelper.editValue('<?=addslashes($akSelectValueID)?>')" value="<?=t('Cancel')?>" />
@@ -51,18 +53,18 @@ function getAttributeOptionHTML($v)
 
 <div class="form-group">
     <label><?=t("Multiple Values")?></label>
-    <div class="checkbox">
-        <label>
-            <?=$form->checkbox('akSelectAllowMultipleValues', 1, $akSelectAllowMultipleValues)?> <span><?=t('Allow multiple options to be chosen.')?></span>
-        </label>
+    <div class="form-check">
+        <?=$form->checkbox('akSelectAllowMultipleValues', 1, $akSelectAllowMultipleValues)?>
+        <label for="akSelectAllowMultipleValues" class="form-check-label"><?=t('Allow multiple options to be chosen.')?></label>
     </div>
 </div>
 
 <div class="form-group" data-group="single-value">
 	<label><?=t("Single Value")?></label>
-	<div class="checkbox">
-		<label>
-			<?=$form->checkbox('akDisplayMultipleValuesOnSelect', 1, $akDisplayMultipleValuesOnSelect)?> <span><?=t('Display full option list when selecting.')?></span>
+	<div class="form-check">
+        <?=$form->checkbox('akDisplayMultipleValuesOnSelect', 1, $akDisplayMultipleValuesOnSelect)?>
+        <label for="akDisplayMultipleValuesOnSelect" class="form-check-label">
+			<?=t('Display full option list when selecting.')?>
 		</label>
 	</div>
 	<div class="help-block"><?=t('Enabling this will typically display the list with radio buttons.')?></div>
@@ -70,18 +72,20 @@ function getAttributeOptionHTML($v)
 
 <div class="form-group" data-group="single-value">
     <label><?=t("Hide None Option")?></label>
-    <div class="checkbox">
-        <label>
-            <?=$form->checkbox('akHideNoneOption', 1, $akHideNoneOption)?> <span><?=t('Hide none option from the list.')?></span>
+    <div class="form-check">
+        <?=$form->checkbox('akHideNoneOption', 1, $akHideNoneOption)?>
+        <label for="akHideNoneOption" class="form-check-label">
+            <?=t('Hide none option from the list.')?>
         </label>
     </div>
 </div>
 
 <div class="form-group">
     <label><?=t("User Submissions")?></label>
-    <div class="checkbox">
-        <label>
-            <?=$form->checkbox('akSelectAllowOtherValues', 1, $akSelectAllowOtherValues)?> <span><?=t('Allow users to add to this list.')?></span>
+    <div class="form-check">
+        <?=$form->checkbox('akSelectAllowOtherValues', 1, $akSelectAllowOtherValues)?>
+        <label for="akSelectAllowOtherValues" class="form-check-label">
+             <?=t('Allow users to add to this list.')?>
         </label>
     </div>
 </div>

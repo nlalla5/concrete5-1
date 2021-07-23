@@ -1,40 +1,46 @@
 <?php
+
 namespace Concrete\Controller\Dialog\File;
 
 use Concrete\Controller\Backend\UserInterface as BackendInterfaceController;
-use Concrete\Controller\Element\Search\Files\Header;
-use Concrete\Controller\Search\FileFolder;
-use Concrete\Core\Entity\Search\Query;
-use Concrete\Core\Search\Field\ManagerFactory;
-use FilePermissions;
+use Concrete\Core\File\Component\Chooser\ChooserConfiguration;
+use Concrete\Core\File\Component\Chooser\ChooserConfigurationInterface;
+use Concrete\Core\File\Filesystem;
+use Concrete\Core\Foundation\Service\ProviderList;
+use Concrete\Core\Permission\Checker;
 
 class Search extends BackendInterfaceController
 {
     protected $viewPath = '/dialogs/file/search';
 
-    protected function canAccess()
+    /**
+     * @var Filesystem
+     */
+    protected $filesystem;
+
+    public function __construct(Filesystem $filesystem)
     {
-        $cp = FilePermissions::getGlobal();
-        if ($cp->canSearchFiles() || $cp->canAddFile()) {
-            return true;
-        } else {
-            return false;
-        }
+        parent::__construct();
+
+        $this->filesystem = $filesystem;
     }
 
     public function view()
     {
-        $search = new FileFolder();
-        $search->search();
-        $result = $search->getSearchResultObject();
+        $this->set('configuration', $this->app->make(ChooserConfigurationInterface::class));
+        $this->set('multipleSelection', $this->request->query->getBoolean('multipleSelection') || $this->request->request->getBoolean('multipleSelection'));
+    }
 
-        if (is_object($result)) {
-            $this->set('result', $result);
-        }
+    /**
+     * {@inheritdoc}
+     *
+     * @see \Concrete\Controller\Backend\UserInterface::canAccess()
+     */
+    protected function canAccess()
+    {
+        $folder = $this->filesystem->getRootFolder();
+        $cp = new Checker($folder);
 
-        $header = new Header();
-        $header->setIncludeBreadcrumb(true);
-        $this->set('header', $header);
-        $this->requireAsset('core/file-manager');
+        return $cp->canSearchFiles() || $cp->canAddFile();
     }
 }

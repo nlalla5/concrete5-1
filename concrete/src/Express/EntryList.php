@@ -5,19 +5,50 @@ use Concrete\Core\Attribute\Category\ExpressCategory;
 use Concrete\Core\Entity\Express\Association;
 use Concrete\Core\Entity\Express\Entity;
 use Concrete\Core\Entity\Express\Entry;
+use Concrete\Core\Entity\Site\Site;
 use Concrete\Core\Search\ItemList\Database\AttributedItemList as DatabaseItemList;
+use Concrete\Core\Search\ItemList\Pager\Manager\ExpressEntryListPagerManager;
+use Concrete\Core\Search\ItemList\Pager\PagerProviderInterface;
+use Concrete\Core\Search\ItemList\Pager\QueryString\VariableFactory;
+use Concrete\Core\Search\Pagination\PaginationProviderInterface;
 use Concrete\Core\Search\PermissionableListItemInterface;
+use Concrete\Core\Support\Facade\Application;
+use Concrete\Core\User\User;
 use Pagerfanta\Adapter\DoctrineDbalAdapter;
 use Concrete\Core\Search\Pagination\Pagination;
 
-class EntryList extends DatabaseItemList implements PermissionableListItemInterface
+class EntryList extends DatabaseItemList implements PagerProviderInterface, PaginationProviderInterface
 {
 
     protected $category;
     protected $entity;
 
+    /**
+     * Determines whether the list should automatically always sort by a column that's in the automatic sort.
+     * This is the default, but it's better to be able to use the AutoSortColumnRequestModifier on a search
+     * result class instead. In order to do that we disable the auto sort here, while still providing the array
+     * of possible auto sort columns.
+     *
+     * @var bool
+     */
+    protected $enableAutomaticSorting = false;
+
+    /**
+     * Columns in this array can be sorted via the request.
+     *
+     * @var array
+     */
+    protected $autoSortColumns = [
+        'e.exEntryDateCreated',
+        'e.exEntryDateModified',
+    ];
+
     public function __construct(Entity $entity)
     {
+        $u = app(User::class);
+        if ($u->isSuperUser()) {
+            $this->ignorePermissions();
+        }
         $this->category = $entity->getAttributeKeyCategory();
         $this->entity = $entity;
         $this->setItemsPerPage($entity->getItemsPerPage());
@@ -53,6 +84,20 @@ class EntryList extends DatabaseItemList implements PermissionableListItemInterf
         return $query->resetQueryParts(['groupBy', 'orderBy'])->select('count(distinct e.exEntryID)')->setMaxResults(1)->execute()->fetchColumn();
     }
 
+    public function filterBySite(Site $site)
+    {
+        if (!$this->entity->usesSeparateSiteResultsBuckets()) {
+            // This entity doesn't have site-specific entries, so we this filter by site does not apply.
+            return false;
+        }
+
+        // This entity does use site specific buckets. So let's figure out which results node we're going to be using for
+        // this site.
+        $node = $this->entity->getEntityResultsNodeObject($site);
+        $this->query->andWhere('resultsNodeID = :resultsNodeID');
+        $this->query->setParameter('resultsNodeID', $node->getTreeNodeID());
+    }
+
     public function sortByDisplayOrderAscending()
     {
         $this->query->orderBy('e.exEntryDisplayOrder', 'asc');
@@ -74,20 +119,23 @@ class EntryList extends DatabaseItemList implements PermissionableListItemInterf
         }
     }
 
+    public function getPagerManager()
+    {
+        return new ExpressEntryListPagerManager($this->entity, $this);
+    }
 
-    /**
-     * Gets the pagination object for the query.
-     *
-     * @return Pagination
-     */
-    protected function createPaginationObject()
+    public function getPagerVariableFactory()
+    {
+        return new VariableFactory($this);
+    }
+
+
+    public function getPaginationAdapter()
     {
         $adapter = new DoctrineDbalAdapter($this->deliverQueryObject(), function ($query) {
             $query->resetQueryParts(['groupBy', 'orderBy'])->select('count(distinct e.exEntryID)')->setMaxResults(1);
         });
-        $pagination = new Pagination($this, $adapter);
-
-        return $pagination;
+        return $adapter;
     }
 
     public function getResult($queryRow)
@@ -116,7 +164,7 @@ class EntryList extends DatabaseItemList implements PermissionableListItemInterf
         return $fp->canViewExpressEntry();
     }
 
-    public function setPermissionsChecker(\Closure $checker)
+    public function setPermissionsChecker(\Closure $checker = null)
     {
         $this->permissionsChecker = $checker;
     }
@@ -134,6 +182,22 @@ class EntryList extends DatabaseItemList implements PermissionableListItemInterf
     public function ignorePermissions()
     {
         $this->permissionsChecker = -1;
+    }
+
+    /**
+     * Sorts this list by date added ascending.
+     */
+    public function sortByDateAdded()
+    {
+        $this->query->orderBy('e.exEntryDateCreated', 'asc');
+    }
+
+    /**
+     * Sorts this list by date added descending.
+     */
+    public function sortByDateAddedDescending()
+    {
+        $this->query->orderBy('e.exEntryDateCreated', 'desc');
     }
 
     public function createQuery()
@@ -162,16 +226,34 @@ class EntryList extends DatabaseItemList implements PermissionableListItemInterf
                 // we have a match.
                 $entryAssociation = $entry->getEntryAssociation($targetAssociation);
                 if ($entryAssociation) {
-                    $table = 'ase' . $entryAssociation->getID();
-                    $this->query->innerJoin('e', 'ExpressEntityAssociationSelectedEntries', $table, 'e.exEntryID = ' . $table . '.exSelectedEntryID');
-                    $this->query->andWhere($table . '.id = :entryAssociationID' . $entryAssociation->getID());
-                    $this->query->setParameter('entryAssociationID' . $entryAssociation->getID(), $entryAssociation->getID());
+                    $entryAssociationTable = 'a' . $entryAssociation->getID();
+                    $entryAssociationEntriesTable = 'ae' . $entryAssociation->getID();
+
+                    $this->query->innerJoin('e', 'ExpressEntityEntryAssociations', $entryAssociationTable, 'e.exEntryID = ' . $entryAssociationTable . '.exEntryID');
+                    $this->query->innerJoin($entryAssociationTable, 'ExpressEntityAssociationEntries', $entryAssociationEntriesTable, $entryAssociationTable . '.id = ' . $entryAssociationEntriesTable . '.association_id');
+
+                    $this->query->andWhere($entryAssociationTable . '.association_id = :entryAssociationID' . $entryAssociation->getID());
+                    $this->query->andWhere($entryAssociationEntriesTable . '.exEntryID = :selectedEntryID' . $entryAssociation->getID());
+                    $this->query->setParameter('entryAssociationID' . $entryAssociation->getID(), $association->getID());
+                    $this->query->setParameter('selectedEntryID' . $entryAssociation->getID(), $entry->getID());
                 } else {
                     $this->query->andWhere('1 = 0');
                 }
             }
         }
     }
+
+    /**
+     * Filters by a user ID.
+     *
+     * @param integer $userID
+     */
+    public function filterByAuthorUserID($userID)
+    {
+        $this->query->andWhere('e.uID = :userID');
+        $this->query->setParameter('userID', $userID);
+    }
+
 
 
 }

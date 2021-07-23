@@ -27,7 +27,6 @@ class Customize extends BackendInterfacePageController
 
     public function view($pThemeID)
     {
-        $this->requireAsset('core/style-customizer');
         $pt = PageTheme::getByID($pThemeID);
         if (is_object($pt) && $pt->isThemeCustomizable()) {
             $presets = $pt->getThemeCustomizableStylePresets();
@@ -93,6 +92,7 @@ class Customize extends BackendInterfacePageController
             $this->set('selectedPreset', $selectedPreset);
             $this->set('styleSets', $styleList->getSets());
             $this->set('theme', $pt);
+            $this->set('token', $this->app->make('token'));
         } else {
             throw new Exception(t('Invalid or non-customizable theme.'));
         }
@@ -159,7 +159,7 @@ class Customize extends BackendInterfacePageController
                 $cscv = $csc->getVersionToModify();
                 $cscv->resetCustomThemeStyles();
                 $vo = $csc->getVersionObject();
-                if ($vo->isApproved()) {
+                if ($vo->isApprovedNow()) {
                     $vo = $cscv->getVersionObject();
                     $vo->approve();
                 }

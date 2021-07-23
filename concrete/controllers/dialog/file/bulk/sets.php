@@ -52,7 +52,6 @@ class Sets extends BackendInterfaceController
 
     public function view()
     {
-        $this->requireAsset('javascript', 'jquery/tristate');
         $this->set('files', $this->files);
     }
 
@@ -82,6 +81,10 @@ class Sets extends BackendInterfaceController
                                     $fs->addFileToSet($file);
                                     break;
                             }
+                            $fv = $file->getApprovedVersion();
+                            if ($fv) {
+                                $fv->releaseImagineImage();
+                            }
                         }
                     }
                 }
@@ -97,6 +100,10 @@ class Sets extends BackendInterfaceController
                             $type = ($fsNewShare[$i] == 1) ? Set::TYPE_PUBLIC : Set::TYPE_PRIVATE;
                             $fs = Set::createAndGetSet($fsNew[$i], $type);
                             $fs->addFileToSet($file);
+                            $fv = $file->getApprovedVersion();
+                            if ($fv) {
+                                $fv->releaseImagineImage();
+                            }
                         }
                     }
                 }

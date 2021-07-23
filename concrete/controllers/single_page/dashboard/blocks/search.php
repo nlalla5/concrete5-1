@@ -7,7 +7,6 @@ use Concrete\Core\File\Filesystem;
 use Concrete\Core\File\Search\ColumnSet\DefaultSet;
 use Concrete\Core\File\Search\Result\Result;
 use Concrete\Core\Page\Controller\DashboardPageController;
-use Concrete\Controller\Search\Files as SearchFilesController;
 use View;
 use Loader;
 
@@ -17,7 +16,7 @@ class Search extends DashboardPageController
     {
 
         /*
-        $header = new Header();
+        $header = $this->app->build(Header::class);
         $this->set('headerMenu', $header);
         $this->requireAsset('core/file-manager');
         $this->requireAsset('core/imageeditor');
@@ -28,7 +27,7 @@ class Search extends DashboardPageController
             $result = $provider->getSearchResultFromQuery($query);
             $result->setBaseURL(\URL::to('/ccm/system/search/files/current'));
         } else {
-            $search = new FileFolder();
+            $search = $this->app->make(FileFolder::class);
             $search->search();
             $result = $search->getSearchResultObject();
         }

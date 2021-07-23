@@ -3,6 +3,7 @@
 namespace Concrete\Controller\SinglePage\Dashboard\System\Files;
 
 use Concrete\Core\File\Image\BitmapFormat;
+use Concrete\Core\File\Import\Processor\SvgProcessor;
 use Concrete\Core\Http\ResponseFactoryInterface;
 use Concrete\Core\Page\Controller\DashboardPageController;
 use Concrete\Core\Page\Page;
@@ -10,6 +11,7 @@ use Concrete\Core\Permission\Checker;
 use Concrete\Core\Url\Resolver\Manager\ResolverManager;
 use Exception;
 use Imagine\Image\Box;
+use Imagine\Image\Metadata\ExifMetadataReader;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
@@ -29,13 +31,26 @@ class ImageUploading extends DashboardPageController
         $this->set('restrict_max_width', (int) $config->get('concrete.file_manager.restrict_max_width'));
         $this->set('restrict_max_height', (int) $config->get('concrete.file_manager.restrict_max_height'));
 
+        $this->set('svg_processor_action', (string) $config->get('concrete.file_manager.images.svg_sanitization.action'));
+        $this->set('svg_processor_actions', [
+            SvgProcessor::ACTION_DISABLED => t('Do not perform any check.'),
+            SvgProcessor::ACTION_CHECKVALIDITY => t('Check only the XML validity.'),
+            SvgProcessor::ACTION_SANITIZE => t('Remove potentially harmful elements.'),
+            SvgProcessor::ACTION_REJECT => t('Reject files containing potentially harmful elements.'),
+        ]);
+
         $this->set('use_exif_data_to_rotate_images', (bool) $config->get('concrete.file_manager.images.use_exif_data_to_rotate_images'));
+        $this->set('use_exif_data_for_file_name_attribute', (bool) $config->get('concrete.file_manager.images.use_exif_data_for_file_name_attribute'));
+        $this->set('use_exif_data_for_description_attribute', (bool) $config->get('concrete.file_manager.images.use_exif_data_for_description_attribute'));
+        $this->set('use_exif_data_for_keyword_attribute', (bool) $config->get('concrete.file_manager.images.use_exif_data_for_keyword_attribute'));
+        $this->set('use_exif_data_for_additional_attributes', (bool) $config->get('concrete.file_manager.images.use_exif_data_for_additional_attributes'));
+        $this->set('exif_reader_supported', ExifMetadataReader::isSupported());
 
         $thumbnailOptionsURL = null;
         $p = Page::getByPath('/dashboard/system/files/thumbnails/options');
         if ($p && !$p->isError()) {
             $pp = new Checker($p);
-            if ($pp->canView()) {
+            if ($pp->canViewPage()) {
                 $thumbnailOptionsURL = (string) $this->app->make(ResolverManager::class)->resolve([$p]);
             }
         }
@@ -109,14 +124,25 @@ class ImageUploading extends DashboardPageController
 
             $use_exif_data_to_rotate_images = (bool) $post->get('use_exif_data_to_rotate_images');
 
+            $use_exif_data_for_file_name_attribute = (bool) $post->get('use_exif_data_for_file_name_attribute');
+            $use_exif_data_for_description_attribute = (bool) $post->get('use_exif_data_for_description_attribute');
+            $use_exif_data_for_keyword_attribute = (bool) $post->get('use_exif_data_for_keyword_attribute');
+            $use_exif_data_for_additional_attributes = (bool) $post->get('use_exif_data_for_additional_attributes');
+
+
             if (!$this->error->has()) {
                 $bitmapFormat = $this->app->make(BitmapFormat::class);
                 $config->save('concrete.file_manager.images.manipulation_library', $manipulation_library);
                 $bitmapFormat->setDefaultJpegQuality($jpeg_quality);
                 $bitmapFormat->setDefaultPngCompressionLevel($png_compression);
                 $config->save('concrete.file_manager.images.use_exif_data_to_rotate_images', $use_exif_data_to_rotate_images);
+                $config->save('concrete.file_manager.images.use_exif_data_for_file_name_attribute', $use_exif_data_for_file_name_attribute);
+                $config->save('concrete.file_manager.images.use_exif_data_for_description_attribute', $use_exif_data_for_description_attribute);
+                $config->save('concrete.file_manager.images.use_exif_data_for_keyword_attribute', $use_exif_data_for_keyword_attribute);
+                $config->save('concrete.file_manager.images.use_exif_data_for_additional_attributes', $use_exif_data_for_additional_attributes);
                 $config->save('concrete.file_manager.restrict_max_width', $restrict_max_width);
                 $config->save('concrete.file_manager.restrict_max_height', $restrict_max_height);
+                $config->save('concrete.file_manager.images.svg_sanitization.action', (string) $post->get('svg_processor_action'));
                 $this->flash('success', t('Image options saved.'));
 
                 return $this->app->make(ResponseFactoryInterface::class)->redirect($this->action(''), 302);

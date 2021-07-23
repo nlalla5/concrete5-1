@@ -1,11 +1,12 @@
 <?php
+
 namespace Concrete\Controller\SinglePage\Dashboard\System\Permissions;
 
 use Concrete\Core\Page\Controller\DashboardPageController;
+use Concrete\Core\Permission\Access\Access as PermissionAccess;
 use Loader;
 use PermissionKey;
 use TaskPermission;
-use Concrete\Core\Permission\Access\Access as PermissionAccess;
 
 class Tasks extends DashboardPageController
 {
@@ -17,6 +18,7 @@ class Tasks extends DashboardPageController
                 $permissions = PermissionKey::getList('sitemap');
                 $permissions = array_merge($permissions, PermissionKey::getList('marketplace_newsflow'));
                 $permissions = array_merge($permissions, PermissionKey::getList('admin'));
+                $permissions = array_merge($permissions, PermissionKey::getList('logs'));
                 foreach ($permissions as $pk) {
                     $paID = $_POST['pkID'][$pk->getPermissionKeyID()];
                     $pt = $pk->getPermissionAssignmentObject();
@@ -31,7 +33,7 @@ class Tasks extends DashboardPageController
                 $this->redirect('/dashboard/system/permissions/tasks', 'updated');
             }
         } else {
-            $this->error->add(Loader::helper("validation/token")->getErrorMessage());
+            $this->error->add(Loader::helper('validation/token')->getErrorMessage());
         }
     }
 

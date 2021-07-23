@@ -4,29 +4,35 @@ namespace Concrete\Core\Editor;
 
 use AssetList;
 use Concrete\Core\Application\Application;
+use Concrete\Core\Config\Repository\Liaison;
+use Concrete\Core\Entity\Site\Site;
 use Concrete\Core\Foundation\Service\Provider as ServiceProvider;
 use Concrete\Core\Legacy\FilePermissions;
 use Concrete\Core\Legacy\TaskPermission;
 use Concrete\Core\Localization\Localization;
+use Concrete\Core\Site\Service;
 
 class EditorServiceProvider extends ServiceProvider
 {
     public function register()
     {
         $this->app->singleton(
-            EditorInterface::class,
+            CkeditorEditor::class,
             function (Application $app) {
-                $config = $app->make('site')->getSite()->getConfigRepository();
+                $siteService = $app->make('site');
+                $activeSite = $siteService->getActiveSiteForEditing();
+                $config = $activeSite->getConfigRepository();
+
                 $styles = $config->get('editor.ckeditor4.styles', []);
+
+                // Load plugins and select the site specific ones
                 $pluginManager = new PluginManager();
-                $selectedPlugins = $config->get('editor.ckeditor4.plugins.selected');
-                if (!is_array($selectedPlugins)) {
-                    $selectedPlugins = array_merge($config->get('editor.ckeditor4.plugins.selected_default'), $config->get('editor.ckeditor4.plugins.selected_hidden'));
-                }
-                $pluginManager->select($selectedPlugins);
                 $this->registerCkeditorPlugins($pluginManager);
                 $this->registerCorePlugins($pluginManager);
-                $editor = new CkeditorEditor($config, $pluginManager, $styles);
+                $pluginManager->select($this->resolveSelectedPlugins($activeSite, $config, $siteService));
+
+                $editor = $app->build(CkeditorEditor::class,
+                    ['config' => $config, 'pluginManager' => $pluginManager, 'styles' => $styles]);
                 $editor->setToken($app->make('token')->generate('editor'));
 
                 $filePermission = FilePermissions::getGlobal();
@@ -44,7 +50,8 @@ class EditorServiceProvider extends ServiceProvider
                 return $editor;
             }
         );
-        $this->app->alias(EditorInterface::class, 'editor');
+        $this->app->alias(CkeditorEditor::class, EditorInterface::class);
+        $this->app->alias(CkeditorEditor::class, 'editor');
     }
 
     protected function registerCkeditorPlugins(PluginManager $pluginManager)
@@ -57,6 +64,8 @@ class EditorServiceProvider extends ServiceProvider
                 'about' => [t('About'), t('This plugin displays the editor version, online documentation links, and licensing information.')],
                 // https://ckeditor.com/cke4/addon/autogrow
                 'autogrow' => [t('Auto Grow'), t('The editor will automatically expand and shrink vertically depending on its content.')],
+                // https://ckeditor.com/cke4/addon/autolink
+                'autolink' => [t('Auto Link'), t('This plugin turns pasted URL text into links. The URL text must include the protocol type such as HTTP and HTTPS.')],
                 // https://ckeditor.com/cke4/addon/a11yhelp
                 'a11yhelp' => [t('Accessibility Help'), t('This plugin displays information about the keyboard usage using the ALT+0 combination.')],
                 // https://ckeditor.com/cke4/addon/basicstyles
@@ -81,6 +90,8 @@ class EditorServiceProvider extends ServiceProvider
                 'divarea' => [t('Div Editing Area'), t('This plugin uses a <div> element (instead of the <iframe> element) as the editable area. Much similar to inline editing, it allows the content to inherit styles from host page.')],
                 // https://ckeditor.com/cke4/addon/elementspath
                 'elementspath' => [t('Elements Path'), t('This plugin displays the list of HTML elements at the current cursor position.')],
+                // https://ckeditor.com/cke4/addon/emoji
+                'emoji' => [t('Emoji'), t('This plugin adds autocomplete for inserting Unicode emoji characters. Typing a colon ( : ) followed by at least two additional characters will list available emojis.')],
                 // https://ckeditor.com/cke4/addon/enterkey
                 'enterkey' => [t('Enter Key'), t('This plugin defines the Enter key (line breaking) behavior.')],
                 // https://ckeditor.com/cke4/addon/entities
@@ -127,6 +138,8 @@ class EditorServiceProvider extends ServiceProvider
                 'pastetext' => [t('Paste As Plain Text'), t('This adds a button to paste clipboard contents as plain text.')],
                 // https://ckeditor.com/cke4/addon/pastefromword
                 'pastefromword' => [t('Paste from Word'), t('This adds a button to paste content from Microsoft Word and maintain original formatting.')],
+                // https://ckeditor.com/cke4/addon/placeholder
+                'placeholder' => [t('Placeholder'), t('This plugin lets you create and edit placeholders (non-editable text fragments).')],
                 // https://ckeditor.com/cke4/addon/preview
                 'preview' => [t('Preview'), t('This plugin adds a button which shows a preview of the document as it will be displayed to end users or printed.')],
                 // https://ckeditor.com/cke4/addon/removeformat
@@ -158,7 +171,7 @@ class EditorServiceProvider extends ServiceProvider
                 // https://ckeditor.com/cke4/addon/tableresize
                 'tableresize' => [t('Table Resize'), t('This plugin adds support for table column resizing with the mouse.')],
                 // https://ckeditor.com/cke4/addon/tableselection
-                'tableselection' => [t('Table Selection'), t('This plugin allows selecting arbitrary rectangular table fragments, appling formatting or adding links to all selected cells, cut/copy/paste entire rows or columns.')],
+                'tableselection' => [t('Table Selection'), t('This plugin allows selecting arbitrary rectangular table fragments, applying formatting or adding links to all selected cells, cut/copy/paste entire rows or columns.')],
                 // https://ckeditor.com/cke4/addon/tabletools
                 'tabletools' => [t('Table Tools'), t('This plugin adds a more advanced context menu for table items and the Cell Properties dialog window.')],
                 // https://ckeditor.com/cke4/addon/toolbar
@@ -184,161 +197,70 @@ class EditorServiceProvider extends ServiceProvider
 
     private function registerCorePlugins(PluginManager $pluginManager)
     {
-        $coreAssetDir = 'js/ckeditor4/core/';
-        $vendorAssetDir = 'js/ckeditor4/vendor/';
-
-        $assetList = AssetList::getInstance();
-        $assetList->register(
-            'javascript',
-            'editor/ckeditor4',
-            $vendorAssetDir . 'ckeditor.js',
-            ['combine' => false, 'minify' => false]
-        );
-        $assetList->register(
-            'css',
-            'editor/ckeditor4',
-            $coreAssetDir . 'ckeditor.css'
-        );
-        $assetList->register(
-            'javascript',
-            'editor/ckeditor4/jquery_adapter',
-            $vendorAssetDir . 'adapters/jquery.js'
-        );
-
-        $assetList->registerGroup(
-            'editor/ckeditor4',
-            [
-                ['javascript', 'editor/ckeditor4'],
-                ['css', 'editor/ckeditor4'],
-                ['javascript', 'editor/ckeditor4/jquery_adapter'],
-            ]
-        );
-
-        $assetList->register(
-            'javascript',
-            'editor/ckeditor4/concrete5inline',
-            $coreAssetDir . 'concrete5inline/register.js'
-        );
-        $assetList->register(
-            'css',
-            'editor/ckeditor4/concrete5inline',
-            $coreAssetDir . 'concrete5inline/styles.css'
-        );
-
-        $assetList->registerGroup(
-            'editor/ckeditor4/concrete5inline',
-            [
-                ['javascript', 'editor/ckeditor4/concrete5inline'],
-                ['css', 'editor/ckeditor4/concrete5inline'],
-            ]
-        );
-
-        $assetList->register(
-            'javascript',
-            'editor/ckeditor4/concrete5filemanager',
-            $coreAssetDir . 'concrete5filemanager/register.js'
-        );
-        $assetList->register(
-            'css',
-            'editor/ckeditor4/concrete5filemanager',
-            $coreAssetDir . 'concrete5filemanager/styles.css'
-        );
-        $assetList->registerGroup(
-            'editor/ckeditor4/concrete5filemanager',
-            [
-                ['javascript', 'editor/ckeditor4/concrete5filemanager'],
-                ['css', 'editor/ckeditor4/concrete5filemanager'],
-            ]
-        );
-
-        $assetList->register(
-            'javascript',
-            'editor/ckeditor4/concrete5uploadimage',
-            $coreAssetDir . 'concrete5uploadimage/register.js'
-        );
-        $assetList->registerGroup(
-            'editor/ckeditor4/concrete5uploadimage',
-            [
-                ['javascript', 'editor/ckeditor4/concrete5uploadimage'],
-            ]
-        );
-
-        $assetList->register(
-            'javascript',
-            'editor/ckeditor4/concrete5link',
-            $coreAssetDir . 'concrete5link/register.js'
-        );
-        $assetList->registerGroup(
-            'editor/ckeditor4/concrete5link',
-            [
-                ['javascript', 'editor/ckeditor4/concrete5link'],
-            ]
-        );
-
-        $assetList->register(
-            'javascript',
-            'editor/ckeditor4/normalizeonchange',
-            $coreAssetDir . 'normalizeonchange/register.js'
-        );
-        $assetList->registerGroup(
-            'editor/ckeditor4/normalizeonchange',
-            [
-                ['javascript', 'editor/ckeditor4/normalizeonchange'],
-            ]
-        );
-
-        $assetList->register(
-            'javascript',
-            'editor/ckeditor4/concrete5styles',
-            $coreAssetDir . 'concrete5styles/register.js'
-        );
-        $assetList->register(
-            'css',
-            'editor/ckeditor4/concrete5styles',
-            $coreAssetDir . 'concrete5styles/styles.css'
-        );
-        $assetList->registerGroup(
-            'editor/ckeditor4/concrete5styles',
-            [
-                ['javascript', 'editor/ckeditor4/concrete5styles'],
-                ['css', 'editor/ckeditor4/concrete5styles'],
-            ]
-        );
-
         $plugin = new Plugin();
         $plugin->setKey('concrete5inline');
         $plugin->setName(t('concrete5 Inline'));
-        $plugin->requireAsset('editor/ckeditor4/concrete5inline');
+        $plugin->requireAsset('ckeditor');
         $pluginManager->register($plugin);
 
         $plugin = new Plugin();
         $plugin->setKey('concrete5filemanager');
         $plugin->setName(t('concrete5 File Browser'));
-        $plugin->requireAsset('editor/ckeditor4/concrete5filemanager');
+        $plugin->requireAsset('ckeditor');
         $pluginManager->register($plugin);
 
         $plugin = new Plugin();
         $plugin->setKey('concrete5uploadimage');
         $plugin->setName(t('concrete5 Upload Image'));
-        $plugin->requireAsset('editor/ckeditor4/concrete5uploadimage');
+        $plugin->requireAsset('ckeditor');
         $pluginManager->register($plugin);
 
         $plugin = new Plugin();
         $plugin->setKey('concrete5link');
         $plugin->setName(t('concrete5 Link'));
-        $plugin->requireAsset('editor/ckeditor4/concrete5link');
+        $plugin->requireAsset('ckeditor');
         $pluginManager->register($plugin);
 
         $plugin = new Plugin();
         $plugin->setKey('normalizeonchange');
         $plugin->setName(t('Normalize On Change'));
-        $plugin->requireAsset('editor/ckeditor4/normalizeonchange');
+        $plugin->requireAsset('ckeditor');
         $pluginManager->register($plugin);
 
         $plugin = new Plugin();
         $plugin->setKey('concrete5styles');
         $plugin->setName(t('concrete5 Styles'));
-        $plugin->requireAsset('editor/ckeditor4/concrete5styles');
+        $plugin->requireAsset('ckeditor');
         $pluginManager->register($plugin);
+    }
+
+    /**
+     * Find the selected ckeditor plugins
+     *
+     * @param \Concrete\Core\Entity\Site\Site $activeSite
+     * @param \Concrete\Core\Config\Repository\Liaison $config
+     * @param \Concrete\Core\Site\Service $siteService
+     *
+     * @return array
+     */
+    protected function resolveSelectedPlugins(Site $activeSite, Liaison $config, Service $siteService)
+    {
+        // Load the selected plugins from the current site
+        $selectedPlugins = $config->get('editor.ckeditor4.plugins.selected');
+
+        if (!is_array($selectedPlugins)) {
+            // Resolve the default config to use
+            if ($activeSite->getSiteHandle() === 'default') {
+                $defaultConfig = $config;
+            } else {
+                $defaultConfig = $siteService->getDefault()->getConfigRepository();
+            }
+
+            // Load in default selected plugins and hidden selected plugins
+            $selectedPlugins = (array) $defaultConfig->get('editor.ckeditor4.plugins.selected_default', []);
+            $selectedPlugins = array_merge($selectedPlugins, (array) $defaultConfig->get('editor.ckeditor4.plugins.selected_hidden', []));
+        }
+
+        return $selectedPlugins;
     }
 }

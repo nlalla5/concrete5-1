@@ -1,11 +1,21 @@
 <?php
+
 namespace Concrete\Block\Autonav;
 
 use Concrete\Core\Block\BlockController;
+use Concrete\Core\Feature\Features;
+use Concrete\Core\Feature\UsesFeatureInterface;
 use Core;
 use Database;
 use Page;
 use Permissions;
+use Concrete\Core\Error\UserMessageException;
+use Concrete\Core\Block\View\BlockView;
+use Concrete\Core\Http\ResponseFactoryInterface;
+use Concrete\Core\Entity\Block\BlockType\BlockType;
+use Doctrine\ORM\EntityManagerInterface;
+
+defined('C5_EXECUTE') or die('Access Denied.');
 
 /**
  * The controller for the Auto-Nav block.
@@ -18,19 +28,28 @@ use Permissions;
  * @copyright  Copyright (c) 2003-2012 Concrete5. (http://www.concrete5.org)
  * @license    http://www.concrete5.org/license/     MIT License
  */
-class Controller extends BlockController
+
+class Controller extends BlockController implements UsesFeatureInterface
 {
     public $collection;
-    public $navArray = array();
-    public $cParentIDArray = array();
-    public $sorted_array = array();
-    public $navSort = array();
-    public $navObjectNames = array();
-    public $displayPages, $displayPagesCID, $displayPagesIncludeSelf, $displaySubPages, $displaySubPageLevels, $displaySubPageLevelsNum, $orderBy, $displayUnavailablePages;
+    public $navArray = [];
+    public $cParentIDArray = [];
+    public $sorted_array = [];
+    public $navSort = [];
+    public $navObjectNames = [];
+    public $displayPages;
+    Public $displayPagesCID;
+    Public $displayPagesIncludeSelf;
+    Public $displaySubPages;
+    Public $displaySubPageLevels;
+    Public $displaySubPageLevelsNum;
+    Public $orderBy;
+    Public $displayUnavailablePages;
     public $haveRetrievedSelf = false;
     public $haveRetrievedSelfPlus1 = false;
     public $displayUnapproved = false;
     public $ignoreExcludeNav = false;
+    protected $helpers = ['form', 'validation/token', 'form/page_selector', 'concrete/ui'];
     protected $homePageID;
     protected $btTable = 'btNavigation';
     protected $btInterfaceWidth = 700;
@@ -41,7 +60,8 @@ class Controller extends BlockController
     protected $btCacheBlockOutputForRegisteredUsers = false;
     protected $btCacheBlockOutputLifetime = 300;
     protected $btWrapperClass = 'ccm-ui';
-    protected $btExportPageColumns = array('displayPagesCID');
+    protected $btExportPageColumns = ['displayPagesCID'];
+    protected $includeParentItem;
 
     public function __construct($obj = null)
     {
@@ -71,17 +91,14 @@ class Controller extends BlockController
         } else {
             $this->homePageID = Page::getHomePageID();
         }
-
         parent::__construct($obj);
     }
 
-    public function registerViewAssets($outputContent = '')
+    public function getRequiredFeatures(): array
     {
-        if (is_object($this->block) && $this->block->getBlockFilename() == 'responsive_header_navigation') {
-            // this isn't great but it's the only way to do this and still make block
-            // output caching available to this block.
-            $this->requireAsset('javascript', 'jquery');
-        }
+        return [
+            Features::NAVIGATION,
+        ];
     }
 
     // private variable $displayUnapproved, used by the dashboard
@@ -115,7 +132,7 @@ class Controller extends BlockController
     public function getContent()
     {
         /* our templates expect a variable not an object */
-        $con = array();
+        $con = [];
         foreach ($this as $key => $value) {
             $con[$key] = $value;
         }
@@ -130,8 +147,8 @@ class Controller extends BlockController
         $db = Database::connection();
         $r = $db->query(
                 "select cID from Pages where cParentID = ? order by cDisplayOrder asc",
-                array($c->getCollectionID()));
-        $pages = array();
+                [$c->getCollectionID()]);
+        $pages = [];
         while ($row = $r->fetchRow()) {
             $pages[] = Page::getByID($row['cID'], 'ACTIVE');
         }
@@ -158,14 +175,19 @@ class Controller extends BlockController
         if (!is_object($this->collection)) {
             $c = Page::getCurrentPage();
             if (!is_object($c)) {
-                return array();
+                return [];
             }
         } else {
             $c = $this->collection;
+
+            // let's use the ID of the collection passed in $this->collection
+            if ($this->collection instanceof \Concrete\Core\Page\Page) {
+                $this->cID = $this->collection->getCollectionID();
+            }
         }
         //Create an array of parent cIDs so we can determine the "nav path" of the current page
         $inspectC = $c;
-        $selectedPathCIDs = array($inspectC->getCollectionID());
+        $selectedPathCIDs = [$inspectC->getCollectionID()];
         $parentCIDnotZero = true;
 
         while ($parentCIDnotZero) {
@@ -176,7 +198,7 @@ class Controller extends BlockController
                 if ($cParentID != $this->homePageID) {
                     $selectedPathCIDs[] = $cParentID; //Don't want home page in nav-path-selected
                 }
-                $inspectC = Page::getById($cParentID, 'ACTIVE');
+                $inspectC = Page::getByID($cParentID, 'ACTIVE');
             }
         }
 
@@ -186,7 +208,7 @@ class Controller extends BlockController
         $allNavItems = $this->generateNav();
 
         //Remove excluded pages from the list (do this first because some of the data prep code needs to "look ahead" in the list)
-        $includedNavItems = array();
+        $includedNavItems = [];
         $excluded_parent_level = 9999; //Arbitrarily high number denotes that we're NOT currently excluding a parent (because all actual page levels will be lower than this)
         $exclude_children_below_level = 9999; //Same deal as above. Note that in this case "below" means a HIGHER number (because a lower number indicates higher placement in the sitemp -- e.g. 0 is top-level)
         foreach ($allNavItems as $ni) {
@@ -213,7 +235,7 @@ class Controller extends BlockController
         }
 
         //Prep all data and put it into a clean structure so markup output is as simple as possible
-        $navItems = array();
+        $navItems = [];
         $navItemCount = count($includedNavItems);
         for ($i = 0; $i < $navItemCount; ++$i) {
             $ni = $includedNavItems[$i];
@@ -314,7 +336,7 @@ class Controller extends BlockController
     public function generateNav()
     {
         // Initialize Nav Array
-        $this->navArray = array();
+        $this->navArray = [];
 
         if (isset($this->displayPagesCID) && !Core::make('helper/validation/numbers')->integer($this->displayPagesCID)) {
             $this->displayPagesCID = 0;
@@ -356,7 +378,6 @@ class Controller extends BlockController
                 break;
         }
         $level = 0;
-        $cParentID = 0;
         switch ($this->displayPages) {
             case 'current':
                 $cParentID = $this->cParentID;
@@ -406,7 +427,7 @@ class Controller extends BlockController
                         $tc1 = Page::getByID($row['cID'], "ACTIVE");
                     }
                     $tc1v = $tc1->getVersionObject();
-                    if (!$tc1v->isApproved() && !$this->displayUnapproved) {
+                    if (!$tc1v->isApprovedNow() && !$this->displayUnapproved) {
                         $displayHeadPage = false;
                     }
                 }
@@ -423,14 +444,18 @@ class Controller extends BlockController
 
             $this->getNavigationArray($cParentID, $orderBy, $level);
 
-            // if we're at the top level we add home to the beginning
-            if ($cParentID == Page::getHomePageID($cParentID)) {
+            $shouldIncludeParentItem = $this->shouldIncludeParentItem();
+            if ($shouldIncludeParentItem === null) {
+                // if we're at the top level we add home to the beginning
+                $shouldIncludeParentItem = ($cParentID == Page::getHomePageID($cParentID));
+            }
+            if ($shouldIncludeParentItem) {
                 if ($this->displayUnapproved) {
                     $tc1 = Page::getByID($cParentID, "RECENT");
                 } else {
                     $tc1 = Page::getByID($cParentID, "ACTIVE");
                 }
-                $niRow = array();
+                $niRow = [];
                 $niRow['cvName'] = $tc1->getCollectionName();
                 $niRow['cID'] = $cParentID;
                 $niRow['cvDescription'] = $tc1->getCollectionDescription();
@@ -443,9 +468,8 @@ class Controller extends BlockController
             }
 
             /*
-
             if ($displayHeadPage) {
-                $niRow = array();
+                $niRow = [];
                 $niRow['cvName'] = $tc1->getCollectionName();
                 $niRow['cID'] = $row['cID'];
                 $niRow['cvDescription'] = $tc1->getCollectionDescription();
@@ -483,7 +507,7 @@ class Controller extends BlockController
         $this->populateParentIDArray($this->cID);
 
         $idArray = array_reverse($this->cParentIDArray);
-        $this->cParentIDArray = array();
+        $this->cParentIDArray = [];
         if ($level - count($idArray) == 0) {
             // This means that the parent ID array is one less than the item
             // we're trying to grab - so we return our CURRENT page as the item to get
@@ -527,7 +551,6 @@ class Controller extends BlockController
         }
 
         // increment all items in the nav array with a greater $currentLevel
-
         foreach ($this->navArray as $ni) {
             if ($ni->getLevel() + 1 < $currentLevel) {
                 $ni->hasChildren = true;
@@ -572,7 +595,7 @@ class Controller extends BlockController
                     $displayPage = $this->displayPage($tc);
 
                     if ($displayPage) {
-                        $niRow = array();
+                        $niRow = [];
                         $niRow['cvName'] = $tc->getCollectionName();
                         $niRow['cID'] = $row['cID'];
                         $niRow['cvDescription'] = $tc->getCollectionDescription();
@@ -744,7 +767,7 @@ class Controller extends BlockController
     protected function displayPage($tc)
     {
         $tcv = $tc->getVersionObject();
-        if ((!is_object($tcv)) || (!$tcv->isApproved() && !$this->displayUnapproved)) {
+        if ((!is_object($tcv)) || (!$tcv->isApprovedNow() && !$this->displayUnapproved)) {
             return false;
         }
 
@@ -761,5 +784,51 @@ class Controller extends BlockController
     public function excludeFromNavViaAttribute($c)
     {
         return $c->getAttribute('exclude_nav');
+    }
+
+    public function action_preview_pane()
+    {
+        $token = $this->app->make('token');
+        if (!$token->validate('ccm-autonav-preview')) {
+            throw new UserMessageException($token->getErrorMessage());
+        }
+        $bt = $this->app->make(EntityManagerInterface::class)->find(BlockType::class, $this->getBlockTypeID());
+        $btc = $bt->getController();
+        $post = $this->request->request;
+        $btc->collection = $this->getCollectionObject();
+        $btc->orderBy = $post->get('orderBy');
+        $btc->cID = $post->get('cID');
+        $btc->displayPages = $post->get('displayPages');
+        $btc->displaySubPages = $post->get('displaySubPages');
+        $btc->displaySubPageLevels = $post->get('displaySubPageLevels');
+        $btc->displaySubPageLevelsNum = $post->get('displaySubPageLevelsNum');
+        $btc->displayUnavailablePages = $post->get('displayUnavailablePages');
+        if ($btc->displayPages === 'custom') {
+            $btc->displayPagesCID = $post->get('displayPagesCID') ? $post->get('displayPagesCID') : Page::getHomePageID();
+            $btc->displayPagesIncludeSelf = $post->get('displayPagesIncludeSelf');
+        }
+        $bv = new BlockView($bt);
+        ob_start();
+        $bv->render('view');
+        $content = ob_get_contents();
+        ob_end_clean();
+
+        return $this->app->make(ResponseFactoryInterface::class)->create($content);
+    }
+
+    /**
+     * @return bool|null
+     */
+    public function shouldIncludeParentItem()
+    {
+        return $this->includeParentItem;
+    }
+
+    /**
+     * @param bool $includeParentItem
+     */
+    public function setIncludeParentItem($includeParentItem)
+    {
+        $this->includeParentItem = $includeParentItem;
     }
 }

@@ -6,6 +6,7 @@ use Config;
 use Concrete\Core\Support\Facade\Application as ApplicationFacade;
 use Concrete\Core\File\Image\BitmapFormat;
 use Concrete\Core\File\Image\Thumbnail\ThumbnailFormatService;
+use Concrete\Core\File\Incoming;
 
 class Application
 {
@@ -43,9 +44,10 @@ class Application
      */
     public function getIncomingDirectoryContents()
     {
-        $incoming_file_information = array();
-        $fs = StorageLocation::getDefault()->getFileSystemObject();
-        $items = $fs->listContents(REL_DIR_FILES_INCOMING);
+        $app = ApplicationFacade::getFacadeApplication();
+        $incoming = $app->make(Incoming::class);
+        $fs = $incoming->getIncomingFilesystem();
+        $items = $fs->listContents($incoming->getIncomingPath());
 
         return $items;
     }
@@ -97,9 +99,11 @@ class Application
      */
     public function getAllowedFileExtensions()
     {
-        $arr = $this->unserializeUploadFileExtensions(Config::get('concrete.upload.extensions'));
-        sort($arr);
+        $whitelist = array_map('strtolower', $this->unserializeUploadFileExtensions(Config::get('concrete.upload.extensions')));
+        $blacklist = array_map('strtolower', $this->unserializeUploadFileExtensions(Config::get('concrete.upload.extensions_blacklist')));
+        $whitelistNotBlacklist = array_diff($whitelist, $blacklist);
+        sort($whitelistNotBlacklist);
 
-        return $arr;
+        return $whitelistNotBlacklist;
     }
 }

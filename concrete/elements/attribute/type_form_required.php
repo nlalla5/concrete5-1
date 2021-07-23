@@ -114,8 +114,8 @@ if (is_object($category)) {
     }
 }
     ?>
-	<div class="checkbox"><label><?=$form->checkbox('akIsSearchableIndexed', 1, $akIsSearchableIndexed)?> <?=$keyword_label?></label></div>
-	<div class="checkbox"><label><?=$form->checkbox('akIsSearchable', 1, $akIsSearchable)?> <?=$advanced_label?></label></div>
+	<div class="form-check"><?=$form->checkbox('akIsSearchableIndexed', 1, $akIsSearchableIndexed)?> <?=$form->label('akIsSearchableIndexed',$keyword_label, ['class'=>'form-check-label'])?></div>
+	<div class="form-check"><?=$form->checkbox('akIsSearchable', 1, $akIsSearchable)?> <?=$form->label('akIsSearchable',$advanced_label, ['class'=>'form-check-label'])?></div>
 </div>
 
 </fieldset>
@@ -148,14 +148,14 @@ if (is_object($category)) {
 
 <div class="ccm-dashboard-form-actions-wrapper">
 <div class="ccm-dashboard-form-actions">
-	<a href="<?=$back?>" class="btn pull-left btn-default"><?=t('Back')?></a>
+	<a href="<?=$back?>" class="btn float-left btn-secondary"><?=t('Back')?></a>
 <?php if (is_object($key)) {
     ?>
-	<button type="submit" class="btn btn-primary pull-right"><?=t('Save')?></button>
+	<button type="submit" class="btn btn-primary float-right"><?=t('Save')?></button>
 <?php 
 } else {
     ?>
-	<button type="submit" class="btn btn-primary pull-right"><?=t('Add')?></button>
+	<button type="submit" class="btn btn-primary float-right"><?=t('Add')?></button>
 <?php 
 } ?>
 </div>

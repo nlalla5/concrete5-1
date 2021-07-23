@@ -1,4 +1,4 @@
-<?php defined('C5_EXECUTE') or die("Access Denied."); ?>
+<?php defined('C5_EXECUTE') or die('Access Denied.'); ?>
 <style type="text/css">
     div.survey-block-option {
         position: relative;
@@ -25,26 +25,29 @@
     </div>
     <div class="form-group">
         <label for="requiresRegistration" class="control-label"><?= t('Target Audience') ?></label>
-
-        <div class="radio">
-            <label>
-                <input id="requiresRegistration" type="radio" value="0" name="requiresRegistration"
-                       style="vertical-align: middle" <?php if (!$controller->requiresRegistration()) {
-        ?> checked <?php
-    } ?> />&nbsp;<?= t(
-                    'Public') ?>
-            </label>
+        <div class="form-check">
+            <?=$form->radio('requiresRegistration', '0', $controller->requiresRegistration())?>
+            <?=$form->label('requiresRegistration1',t('Public'), ['class'=>'form-check-label'])?>
         </div>
-        <div class="radio">
-            <label>
-                <input type="radio" value="1" name="requiresRegistration"
-                       style="vertical-align: middle" <?php if ($controller->requiresRegistration()) {
-        ?> checked <?php
-    } ?> />&nbsp;<?= t(
-                    'Only Registered Users') ?>
-            </label>
+        <div class="form-check">
+            <?=$form->radio('requiresRegistration', '1', $controller->requiresRegistration())?>
+            <?=$form->label('requiresRegistration2',t('Only Registered Users'), ['class'=>'form-check-label'])?>
         </div>
     </div>
+
+    <div class="form-group">
+        <label for="showResults" class="control-label"><?= t('Survey Results') ?></label>
+        <div class="form-check">
+            <?=$form->checkbox('showResults', 1, ($controller->getShowResults() ? '1':'0'), ['class'=>'show-custom-message form-check-input'])?>
+            <?=$form->label('showResults', t('Hide Survey Results and Show Custom Message'), ['class'=>'form-check-label']) ?>
+        </div>
+    </div>
+    <div class="form-group custom-message-container" style="display: none;">
+        <label for="customMessage" class="control-label"><?= t('Custom Message') ?></label>
+        <input type="text" name="customMessage" value="<?= $controller->getCustomMessage() ?>"
+               class="form-control" placeholder="Thank you for filling out this form!"/>
+    </div>
+
     <div class="form-group">
         <label class="control-label"><?= t('Survey Options') ?></label>
 
@@ -62,8 +65,8 @@
                 foreach ($options as $opt) {
                     ?>
                     <div class="survey-block-option">
-                        <a href="#" class="pull-right delete">
-                            <i class="fa fa-trash-o"></i>
+                        <a href="javascript:void(0);" class="float-right ccm-icon-wrapper text-danger delete">
+                            <i class="fas fa-trash-alt"></i>
                         </a>
                         <?= h($opt->getOptionName()) ?>
                         <input type="hidden" name="survivingOptionNames[]"
@@ -90,8 +93,8 @@
     </div>
     <script type="text/template" role="option">
         <div class="survey-block-option">
-            <a href="#" class="delete pull-right">
-                <i class="fa fa-trash-o"></i>
+            <a href="javascript:void(0);" class="float-right ccm-icon-wrapper text-danger delete">
+                <i class="fas fa-trash-alt"></i>
             </a>
             <%- value %>
             <input type="hidden" name="pollOption[]"
@@ -101,4 +104,22 @@
 </div>
 <script type="text/javascript">
     Concrete.event.fire('survey-edit-open');
+
+    $(document).ready(function(){
+      let showCustomMessage = <?= (int) $controller->getShowResults() ?>;
+
+      if(showCustomMessage) {
+        $('.custom-message-container').show();
+      }
+
+      $('.show-custom-message').on('change', function(e){
+        e.preventDefault();
+        if($(this).prop('checked')){
+          $('.custom-message-container').show();
+        }
+        else {
+          $('.custom-message-container').hide();
+        }
+      });
+    });
 </script>

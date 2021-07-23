@@ -41,11 +41,11 @@
 
     <div class='form-group'>
         <label for='title' class="control-label"><?=t('Results Page')?>:</label>
-        <div class="checkbox">
-            <label for="ccm-search-block-external-target">
-                <input id="ccm-search-block-external-target" <?php if (intval($cParentID) > 0) {
+        <div class="form-check">
+            <input class="form-check-input" id="ccm-search-block-external-target" <?php if (intval($cParentID) > 0) {
     ?>checked<?php 
 } ?> name="externalTarget" type="checkbox" value="1" />
+            <label for="ccm-search-block-external-target" class="form-check-label">
                 <?=t('Post Results to a Different Page')?>
             </label>
         </div>
@@ -57,9 +57,12 @@
     </div>
 
     <div class="form-group">
-        <label class="control-label" for="title"><?=t('Title')?></label>
-        <input class="form-control" name="title" id="title" value="<?=$title?>" />
-    </div>
+        <?php echo $form->label("title", t('Title')); ?>
+	    <div class="input-group">
+		    <?php echo $form->text('title', $title); ?>
+			<?php echo $form->select('titleFormat', \Concrete\Core\Block\BlockController::$btTitleFormats, $titleFormat, array('style' => 'width:105px;flex-grow:0;', 'class' => 'custom-select input-group-append')); ?>
+		</div>
+	</div>
 
 </fieldset>
 

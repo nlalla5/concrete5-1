@@ -2,6 +2,7 @@
 namespace Concrete\Core\Entity\User;
 
 use Doctrine\ORM\Mapping as ORM;
+use League\OAuth2\Server\Entities\UserEntityInterface;
 
 /**
  * @ORM\Entity
@@ -12,7 +13,7 @@ use Doctrine\ORM\Mapping as ORM;
  *     }
  * )
  */
-class User
+class User implements UserEntityInterface, \JsonSerializable
 {
     /**
      * @ORM\Id @ORM\Column(type="integer", options={"unsigned": true})
@@ -78,6 +79,11 @@ class User
     protected $uLastPasswordChange = null;
 
     /**
+     * @ORM\Column(type="datetime", nullable=true)
+     */
+    protected $uDateLastUpdated = null;
+
+    /**
      * @ORM\Column(type="boolean")
      */
     protected $uHasAvatar = false;
@@ -127,10 +133,16 @@ class User
      */
     protected $uIsPasswordReset = false;
 
+    /**
+     * @var int
+     * @ORM\Column(type="integer", options={"unsigned": true}, nullable=true)
+     */
+    protected $uHomeFileManagerFolderID = null;
 
     public function __construct()
     {
         $this->uLastPasswordChange = new \DateTime();
+        $this->uDateLastUpdated = new \DateTime();
         $this->uDateAdded = new \DateTime();
     }
 
@@ -208,6 +220,14 @@ class User
     public function getUserLastPasswordChange()
     {
         return $this->uLastPasswordChange;
+    }
+
+    /**
+     * @return \DateTime
+     */
+    public function getUserDateLastUpdated()
+    {
+        return $this->uDateLastUpdated;
     }
 
     /**
@@ -363,6 +383,14 @@ class User
     }
 
     /**
+     * @param \DateTime $uDateLastUpdated
+     */
+    public function setUserDateLastUpdated($uDateLastUpdated)
+    {
+        $this->uDateLastUpdated = $uDateLastUpdated;
+    }
+
+    /**
      * @param bool $uHasAvatar
      */
     public function setUserHasAvatar($uHasAvatar)
@@ -443,6 +471,22 @@ class User
     }
 
     /**
+     * @return int
+     */
+    public function getHomeFileManagerFolderID()
+    {
+        return $this->uHomeFileManagerFolderID;
+    }
+
+    /**
+     * @param int $uHomeFileManagerFolderID
+     */
+    public function setHomeFileManagerFolderID($uHomeFileManagerFolderID)
+    {
+        $this->uHomeFileManagerFolderID = $uHomeFileManagerFolderID;
+    }
+
+    /**
      * @return \UserInfo|null
      */
     public function getUserInfoObject()
@@ -456,5 +500,27 @@ class User
     public function __toString()
     {
         return (string) $this->getUserID();
+    }
+
+    /**
+     * Return the user's identifier.
+     *
+     * @return mixed
+     */
+    public function getIdentifier()
+    {
+        return $this->getUserID();
+    }
+
+    /**
+     * @return mixed|void
+     */
+    public function jsonSerialize()
+    {
+        return [
+            'id' => $this->getUserID(),
+            'name' => $this->getUserName(),
+            'email' => $this->getUserEmail(),
+        ];
     }
 }

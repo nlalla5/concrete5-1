@@ -2,6 +2,7 @@
 namespace Concrete\Core\Authentication\Type\OAuth;
 
 use Concrete\Core\Foundation\Service\Provider;
+use Concrete\Core\Logging\Channels;
 use OAuth\ServiceFactory;
 use OAuth\UserData\ExtractorFactory;
 
@@ -39,7 +40,6 @@ class ServiceProvider extends Provider
                 try {
                     $type = \AuthenticationType::getByHandle($type);
                     if ($type && is_object($type) && !$type->isError()) {
-                        /** @var GenericOauthTypeController $controller */
                         $controller = $type->getController();
                         if ($controller instanceof GenericOauthTypeController) {
                             switch ($action) {
@@ -62,7 +62,8 @@ class ServiceProvider extends Provider
                         }
                     }
                 } catch (\Exception $e) {
-                    \Log::addNotice('OAUTH ERROR: ' . $e->getMessage());
+                    $logger = $this->app->make('log/factory')->createLogger(Channels::CHANNEL_AUTHENTICATION);
+                    $logger->notice(t('OAuth Error: %s', $e->getMessage()));
                 }
             });
     }

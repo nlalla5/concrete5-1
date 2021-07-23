@@ -30,6 +30,7 @@ composer.phar
 
 # more stuff
 /application/languages/*
+/coverage.clover
 
 # ignore sitemap.xml
 /sitemap.xml
@@ -51,6 +52,7 @@ error_log
 # ignore JavaScript source maps
 /concrete/js/*.js.map
 /concrete/js/bootstrap/*.js.map
+mix-manifest.json
 
 # ignore node modules used for building
 /build/node_modules
@@ -66,7 +68,10 @@ __IDE_SYMBOLS__.php
 /.php_cs
 
 # ignore php-cs-fixer cache file
-/.php_cs.cache
+/.php_cs.cache*
 
 # ignore Visual Code project files
 .vscode
+
+# Ignore stuff copied in from node dependencies
+concrete/js/ckeditor/package.json

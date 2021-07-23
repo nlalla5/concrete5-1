@@ -1,6 +1,7 @@
 <?php
 namespace Concrete\Core\User\PrivateMessage;
 
+use Concrete\Core\File\File;
 use Concrete\Core\Foundation\ConcreteObject;
 use Concrete\Core\Notification\Subject\SubjectInterface;
 use Concrete\Core\User\PrivateMessage\Mailbox as UserPrivateMessageMailbox;
@@ -12,6 +13,7 @@ class PrivateMessage extends ConcreteObject implements SubjectInterface
 {
     protected $authorName = false;
     protected $mailbox;
+    protected $attachments = [];
 
     public function getNotificationDate()
     {
@@ -46,6 +48,14 @@ class PrivateMessage extends ConcreteObject implements SubjectInterface
                 $upm->setPropertiesFromArray($row);
             }
             $upm->mailbox = $mailbox;
+        }
+
+        // fetch the attachments from the given message
+        foreach($db->getAll('select fID from UserPrivateMessagesAttachments where msgID = ?', [$msgID]) as $row) {
+            $file = File::getByID($row["fID"]);
+            if ($file instanceof \Concrete\Core\Entity\File\File) {
+                $upm->attachments[] = $file;
+            }
         }
 
         return $upm;
@@ -138,13 +148,28 @@ class PrivateMessage extends ConcreteObject implements SubjectInterface
         if ($repliedPos > -1) {
             $repliedText = substr($msgBody, $repliedPos);
             $messageText = substr($msgBody, 0, $repliedPos);
-            $msgBody = $messageText . '<div class="ccm-profile-message-replied">' . nl2br($txt->entities($repliedText)) . '</div>';
+            $msgBody = nl2br($txt->entities($messageText)) . '<div class="ccm-profile-message-replied">' . nl2br($txt->entities($repliedText)) . '</div>';
             $msgBody = str_replace($this->getMessageDelimiter(), '<hr />', $msgBody);
         } else {
             $msgBody = nl2br($txt->entities($msgBody));
         }
 
         return $msgBody;
+    }
+
+    public function isMessageUnread()
+    {
+        return $this->msgIsUnread;
+    }
+
+    public function isMessageReplied()
+    {
+        return $this->msgIsReplied;
+    }
+
+    public function isMessageNew()
+    {
+        return $this->msgIsNew;
     }
 
     public function delete()
@@ -210,5 +235,12 @@ class PrivateMessage extends ConcreteObject implements SubjectInterface
     public function getMessageBody()
     {
         return $this->msgBody;
+    }
+
+    /**
+     * @return \Concrete\Core\Entity\File\File[]
+     */
+    public function getAttachments() {
+        return $this->attachments;
     }
 }

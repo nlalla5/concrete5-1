@@ -1,22 +1,36 @@
 <?php
+
 namespace Concrete\Core\Controller;
 
-use Concrete\Core\Application\Application;
+use Concrete\Core\Http\Request;
+use Concrete\Core\Page\Theme\Theme as PageTheme;
 use Concrete\Core\Support\Facade\Facade;
-use Request;
-use PageTheme;
-use View;
-use Route;
+use Concrete\Core\View\View;
 
 class Controller extends AbstractController
 {
     protected $view;
-    protected $viewPath;
+
+    /**
+     * The path to the view file (update it with the setViewPath method).
+     *
+     * @var string
+     */
+    protected $viewPath = '';
+
     protected $theme;
+
     protected $controllerActionPath;
+
     protected $themeViewTemplate;
 
-    public function setViewObject(\Concrete\Core\View\AbstractView $view)
+    public function __construct()
+    {
+        parent::__construct();
+        $this->setViewPath((string) $this->viewPath);
+    }
+
+    public function setViewObject(View $view)
     {
         $this->view = $view;
     }
@@ -32,36 +46,34 @@ class Controller extends AbstractController
 
     public function getTheme()
     {
-        if (is_object($this->view)) {
-            $tmpTheme = Route::getThemeByRoute($this->view->getViewPath());
-            if ($tmpTheme) {
-                return $tmpTheme[0];
-            }
-        }
-
-        if (isset($this->theme)) {
-            return $this->theme;
-        }
+        return $this->theme;
     }
 
     public function setThemeViewTemplate($template)
     {
         $this->themeViewTemplate = $template;
     }
+
+    /**
+     * Returns the wrapper file that holds the content of the view. Usually view.php.
+     *
+     * @return string
+     */
     public function getThemeViewTemplate()
     {
-        if (isset($this->themeViewTemplate)) {
+        if (isset($this->view)) {
+            $templateFromView = $this->view->getViewTemplateFile();
+        }
+
+        if (isset($this->themeViewTemplate) && $templateFromView == FILENAME_THEMES_VIEW) {
             return $this->themeViewTemplate;
         }
 
-        if (is_object($this->view)) {
-            $tmpTheme = Route::getThemeByRoute($this->view->getViewPath());
-            if ($tmpTheme && isset($tmpTheme[1])) {
-                return $tmpTheme[1];
-            }
+        if (!isset($templateFromView)) {
+            $templateFromView = FILENAME_THEMES_VIEW;
         }
 
-        return FILENAME_THEMES_VIEW;
+        return $templateFromView;
     }
 
     public function getControllerActionPath()
@@ -75,23 +87,18 @@ class Controller extends AbstractController
         return $request->getPathInfo();
     }
 
-    public function __construct()
+    /**
+     * Get the path to the view file.
+     */
+    public function getViewPath(): string
     {
-        parent::__construct();
-        if ($this->viewPath) {
-            $this->view = new View($this->viewPath);
-            if (preg_match('/Concrete\\\Package\\\(.*)\\\Controller/i', get_class($this), $matches)) {
-                $pkgHandle = uncamelcase($matches[1]);
-                $this->view->setPackageHandle($pkgHandle);
-            }
-            $this->view->setController($this);
-        }
+        return $this->viewPath;
     }
 
     public function flash($key, $value, $isHTML = false)
     {
         $session = Facade::getFacadeApplication()->make('session');
-        $session->getFlashBag()->add('page_message', array($key, $value, $isHTML));
+        $session->getFlashBag()->add('page_message', [$key, $value, $isHTML]);
     }
 
     public function getViewObject()
@@ -108,8 +115,30 @@ class Controller extends AbstractController
     {
         $a = func_get_args();
         array_unshift($a, $this->getControllerActionPath());
-        $ret = call_user_func_array(array($this->view, 'url'), $a);
 
-        return $ret;
+        return call_user_func_array([$this->view, 'url'], $a);
+    }
+
+    /**
+     * Set the path to the view file.
+     *
+     * @return $this
+     */
+    protected function setViewPath(string $viewPath): self
+    {
+        $this->viewPath = $viewPath;
+        if ($this->viewPath === '') {
+            $this->view = null;
+        } else {
+            $this->view = new View($this->viewPath);
+            $matches = null;
+            if (preg_match('/Concrete\\\Package\\\(.*)\\\Controller/i', get_class($this), $matches)) {
+                $pkgHandle = uncamelcase($matches[1]);
+                $this->view->setPackageHandle($pkgHandle);
+            }
+            $this->view->setController($this);
+        }
+
+        return $this;
     }
 }

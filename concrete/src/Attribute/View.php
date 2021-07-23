@@ -8,6 +8,7 @@ use Concrete\Core\Attribute\Context\ComposerContext;
 use Concrete\Core\Filesystem\TemplateLocation;
 use Concrete\Core\Form\Context\ContextInterface;
 use Concrete\Core\Filesystem\TemplateLocator;
+use Concrete\Core\Url\Resolver\Manager\ResolverManagerInterface;
 use Loader;
 use Concrete\Core\Attribute\Value\Value as AttributeValue;
 use Concrete\Core\Attribute\Key\Key as AttributeKey;
@@ -18,6 +19,7 @@ class View extends AbstractView
 {
     protected $attributeValue;
     protected $attributeKey;
+    protected $attributeObject;
     protected $attributeType;
     protected $attributePkgHandle;
     protected $templateLocator;
@@ -31,6 +33,14 @@ class View extends AbstractView
     protected function getAttributeKey()
     {
         return $this->attributeKey;
+    }
+
+    /**
+     * @param ObjectInterface $attributeObject
+     */
+    public function setAttributeObject(ObjectInterface $attributeObject): void
+    {
+        $this->attributeObject = $attributeObject;
     }
 
     protected function constructView($mixed)
@@ -143,6 +153,9 @@ class View extends AbstractView
             $this->controller = $this->attributeType->getController();
             $this->controller->setAttributeKey($this->attributeKey);
             $this->controller->setAttributeValue($this->attributeValue);
+            if (isset($this->attributeObject)) {
+                $this->controller->setAttributeObject($this->attributeObject);
+            }
             if (is_object($this->attributeKey)) {
                 $this->controller->set('akID', $this->attributeKey->getAttributeKeyID());
             }
@@ -158,19 +171,14 @@ class View extends AbstractView
 
     public function action($action)
     {
-        $arguments = array();
-        if (count(func_get_args()) > 1) {
-            $arguments = array_unshift(func_get_args());
-        }
+        $arguments = func_get_args();
         if (is_object($this->attributeKey)) {
-            return (string)
-            \URL::to('/ccm/system/attribute/action/key', $this->attributeKey->getAttributeKeyID(), $action,
-                $arguments);
+            array_unshift($arguments, '/ccm/system/attribute/action/key', $this->attributeKey->getAttributeKeyID());
         } else {
-            return (string)
-            \URL::to('/ccm/system/attribute/action/type', $this->controller->attributeType->getAttributeTypeID(),
-                $action, $arguments);
+            array_unshift($arguments, '/ccm/system/attribute/action/type', $this->controller->attributeType->getAttributeTypeID());
         }
+        
+        return (string) app(ResolverManagerInterface::class)->resolve($arguments);
     }
 
     public function finishRender($contents)

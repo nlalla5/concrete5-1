@@ -1,4 +1,5 @@
 <?php
+
 namespace Concrete\Authentication\Google;
 
 defined('C5_EXECUTE') or die('Access Denied');
@@ -6,9 +7,13 @@ defined('C5_EXECUTE') or die('Access Denied');
 use Concrete\Core\Authentication\LoginException;
 use Concrete\Core\Authentication\Type\Google\Factory\GoogleServiceFactory;
 use Concrete\Core\Authentication\Type\OAuth\OAuth2\GenericOauth2TypeController;
-use OAuth\OAuth2\Service\Google;
-use Concrete\Core\User\User;
+use Concrete\Core\Error\UserMessageException;
+use Concrete\Core\Form\Service\Widget\GroupSelector;
 use Concrete\Core\Routing\RedirectResponse;
+use Concrete\Core\User\Group\GroupRepository;
+use Concrete\Core\User\User;
+use Concrete\Core\Utility\Service\Validation\Strings;
+use OAuth\OAuth2\Service\Google;
 
 class Controller extends GenericOauth2TypeController
 {
@@ -24,7 +29,7 @@ class Controller extends GenericOauth2TypeController
 
     public function getAuthenticationTypeIconHTML()
     {
-        return '<i class="fa fa-google"></i>';
+        return '<i class="fab fa-google"></i>';
     }
 
     public function getHandle()
@@ -49,41 +54,54 @@ class Controller extends GenericOauth2TypeController
     public function saveAuthenticationType($args)
     {
         $config = $this->app->make('config');
-        $config->save('auth.google.appid', $args['apikey']);
-        $config->save('auth.google.secret', $args['apisecret']);
-        $config->save('auth.google.registration.enabled', (bool) $args['registration_enabled']);
-        $config->save('auth.google.registration.group', intval($args['registration_group'], 10));
+
+        $stringsValidator = $this->app->make(Strings::class);
 
         $whitelist = [];
-        foreach (explode(PHP_EOL, $args['whitelist']) as $entry) {
-            $whitelist[] = trim($entry);
+        foreach (preg_split('/\s*[\r\n]\s*/', array_get($args, 'whitelist', ''), -1, PREG_SPLIT_NO_EMPTY) as $entry) {
+            if (!$stringsValidator->isValidRegex($entry)) {
+                throw new UserMessageException(t('The regular expression "%s" is not valid.', $entry));
+            }
+            $whitelist[] = $entry;
         }
 
         $blacklist = [];
-        foreach (explode(PHP_EOL, $args['blacklist']) as $entry) {
-            $blacklist[] = json_decode(trim($entry), true);
+        foreach (preg_split('/\s*[\r\n]\s*/', array_get($args, 'blacklist', ''), -1, PREG_SPLIT_NO_EMPTY) as $entry) {
+            set_error_handler(function () {}, -1);
+            $decoded = @json_decode($entry, true);
+            restore_error_handler();
+            if (!is_array($decoded) || !isset($decoded[0])) {
+                throw new UserMessageException(t('The black list line "%s" is not valid.', $entry));
+            }
+            if (!$stringsValidator->isValidRegex($decoded[0])) {
+                throw new UserMessageException(t('The regular expression "%s" is not valid.', $entry));
+            }
+            $blacklist[] = $decoded;
         }
 
-        $config->save('auth.google.email_filters.whitelist', array_values(array_filter($whitelist)));
-        $config->save('auth.google.email_filters.blacklist', array_values(array_filter($blacklist)));
+        $config->save('auth.google.appid', (string) ($args['apikey'] ?? ''));
+        $config->save('auth.google.secret', (string) ($args['apisecret'] ?? ''));
+        $config->save('auth.google.registration.enabled', !empty($args['registration_enabled']));
+        $config->save('auth.google.registration.group', ((int) ($args['registration_group'] ?? 0)) ?: null);
+        $config->save('auth.google.email_filters.whitelist', $whitelist);
+        $config->save('auth.google.email_filters.blacklist', $blacklist);
     }
 
     public function edit()
     {
-        $config=$this->app->make('config');
+        $config = $this->app->make('config');
         $this->set('form', $this->app->make('helper/form'));
-        $this->set('apikey', $config->get('auth.google.appid', ''));
-        $this->set('apisecret', $config->get('auth.google.secret', ''));
-
-        $list = new \GroupList();
-        $list->includeAllGroups();
-        $this->set('groups', $list->getResults());
-
-        $this->set('whitelist', $config->get('auth.google.email_filters.whitelist', []));
+        $this->set('groupSelector', $this->app->make(GroupSelector::class));
+        $this->set('apikey', (string) $config->get('auth.google.appid', ''));
+        $this->set('apisecret', (string) $config->get('auth.google.secret', ''));
+        $this->set('registrationEnabled', (bool) $config->get('auth.google.registration.enabled'));
+        $registrationGroupID = (int) $config->get('auth.google.registration.group');
+        $registrationGroup = $registrationGroupID === 0 ? null : $this->app->make(GroupRepository::class)->getGroupById($registrationGroupID);
+        $this->set('registrationGroup', $registrationGroup === null ? null : (int) $registrationGroup->getGroupID());
+        $this->set('whitelist', (array) $config->get('auth.google.email_filters.whitelist', []));
         $blacklist = array_map(function ($entry) {
             return json_encode($entry);
-        }, $config->get('auth.google.email_filters.blacklist', []));
-
+        }, (array) $config->get('auth.google.email_filters.blacklist', []));
         $this->set('blacklist', $blacklist);
     }
 
@@ -95,7 +113,7 @@ class Controller extends GenericOauth2TypeController
                 $image = \Image::open($this->getExtractor()->getImageURL());
                 $ui->updateUserAvatar($image);
             } catch (\Imagine\Exception\InvalidArgumentException $e) {
-                \Log::addNotice("Unable to fetch user images in Google Authentication Type, is allow_url_fopen disabled?");
+                $this->logger->notice('Unable to fetch user images in Google Authentication Type, is allow_url_fopen disabled?');
             } catch (\Exception $e) {
             }
         }
@@ -130,16 +148,14 @@ class Controller extends GenericOauth2TypeController
 
     public function handle_detach_attempt()
     {
-
-        if (!User::isLoggedIn()) {
+        $user = $this->app->make(User::class);
+        if (!$user->isRegistered()) {
             $response = new RedirectResponse(\URL::to('/login'), 302);
             $response->send();
             exit;
         }
-        $user = new User();
         $uID = $user->getUserID();
         $namespace = $this->getHandle();
-
 
         $binding = $this->getBindingForUser($user);
         $accessToken = $this->getService()
@@ -147,17 +163,16 @@ class Controller extends GenericOauth2TypeController
             ->retrieveAccessToken(
                 $this->getService()->service()
             )
-            ->getAccessToken();
-        $this->getService()->request('https://accounts.google.com/o/oauth2/revoke?token='.$accessToken, 'GET');
+            ->getAccessToken()
+        ;
+        $this->getService()->request('https://accounts.google.com/o/oauth2/revoke?token=' . $accessToken, 'GET');
         try {
-            /* @var \Concrete\Core\Database\Connection\Connection $database */
-            $database = $this->app->make('database')->connection();
-            $database->delete('OauthUserMap', ['user_id' => $uID, 'namespace' => $namespace, 'binding' => $binding]);
+            $this->getBindingService()->clearBinding($uID, $binding, $namespace, true);
             $this->showSuccess(t('Successfully detached.'));
 
             exit;
         } catch (\Exception $e) {
-            \Log::error(t('Deattach Error %s', $e->getMessage()));
+            \Log::error(t('Detach Error %s', $e->getMessage()));
             $this->showError(t('Unable to detach account.'));
             exit;
         }

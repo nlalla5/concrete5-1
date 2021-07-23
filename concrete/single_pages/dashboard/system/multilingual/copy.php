@@ -10,7 +10,7 @@ use Concrete\Core\Multilingual\Page\Section\Section as MultilingualSection;
     <fieldset>
         <legend><?php echo t('Copy Locale Tree') ?></legend>
         <?php
-        $u = new User();
+        $u = Core::make(Concrete\Core\User\User::class);
         $copyLocales = array();
         foreach ($locales as $pc) {
             $copyLocales[$pc->getSiteTree()->getSiteHomePageID()] = tc(/*i18n: %1$s is a page name, %2$s is a language name, %3$s is a locale identifier (eg en_US)*/
@@ -35,7 +35,9 @@ use Concrete\Core\Multilingual\Page\Section\Section as MultilingualSection;
                     </div>
 
                     <?php echo Loader::helper('validation/token')->output('copy_tree') ?>
-                    <button class="btn btn-default pull-left" type="submit" name="copy"><?= t('Copy Tree') ?></button>
+                    <div class="form-group">
+                        <button class="btn btn-secondary float-left" type="submit" name="copy"><?= t('Copy Tree') ?></button>
+                    </div>
 
                     <?php
                 } elseif (count($locales) == 1) {
@@ -55,20 +57,21 @@ use Concrete\Core\Multilingual\Page\Section\Section as MultilingualSection;
                             var ctf = $('select[name=copyTreeFrom]').val();
                             var ctt = $('select[name=copyTreeTo]').val();
                             if (ctt > 0 && ctf > 0 && ctt != ctf) {
-                                ccm_triggerProgressiveOperation(
-                                    CCM_TOOLS_PATH + '/dashboard/sitemap_copy_all',
-                                    [
+                                new ConcreteProgressiveOperation({
+                                    url: CCM_DISPATCHER_FILENAME + '/ccm/system/dialogs/page/drag_request/copy_all',
+                                    data: [
                                         {'name': 'origCID', 'value': ctf},
                                         {'name': 'destCID', 'value': ctt},
                                         {'name': 'copyChildrenOnly', 'value': true},
-                                        {'name': 'multilingual', 'value': true}
+                                        {name: <?= json_encode($token::DEFAULT_TOKEN_NAME) ?>, value: <?= json_encode($token->generate('/dialogs/page/drag_request'))?>}
                                     ],
-                                    "<?=t('Copy Locale Tree')?>", function () {
-                                        window.location.href = "<?=$this->action('tree_copied')?>";
+                                    title: "<?=t('Copy Locale Tree')?>",
+                                    onComplete: function() {
+                                        window.location.href = <?=json_encode((string) $this->action('tree_copied')) ?>;
                                     }
-                                );
+                                });
                             } else {
-                                alert("<?=t('You must choose two separate multilingual sections to copy from/to')?>");
+                                alert(<?= json_encode(t('You must choose two separate multilingual sections to copy from/to')) ?>);
                             }
                             return false;
                         });
@@ -101,8 +104,10 @@ use Concrete\Core\Multilingual\Page\Section\Section as MultilingualSection;
                     </div>
 
                     <?php echo Loader::helper('validation/token')->output('rescan_locale') ?>
-                    <button class="btn btn-default pull-left" type="submit"
-                            name="rescan_locale"><?= t('Rescan Locale') ?></button>
+                    <div class="form-group">
+                        <button class="btn btn-secondary float-left" type="submit"
+                                name="rescan_locale"><?= t('Rescan Locale') ?></button>
+                    </div>
 
                     <?php
                 } elseif (count($pages) == 1) {
@@ -121,20 +126,20 @@ use Concrete\Core\Multilingual\Page\Section\Section as MultilingualSection;
                         $("#ccm-internationalization-rescan-tree").on('submit', function () {
                             var ctf = $('select[name=rescanLocale]').val();
                             if (ctf > 0) {
-                                ccm_triggerProgressiveOperation(
-                                    '<?=$view->action('rescan_locale')?>',
-                                    [
+                                new ConcreteProgressiveOperation({
+                                    url: '<?=$view->action('rescan_locale')?>',
+                                    data: [
                                         {'name': 'locale', 'value': ctf},
                                         {
                                             'name': 'ccm_token',
                                             'value': '<?=Core::make('token')->generate('rescan_locale')?>'
                                         }
                                     ],
-                                    "<?=t('Rescan Links')?>",
-                                    function () {
+                                    title: "<?=t('Rescan Links')?>",
+                                    onComplete: function() {
                                         window.location.href = "<?=$this->action('links_rescanned')?>";
                                     }
-                                );
+                                });
                             }
                             return false;
                         });

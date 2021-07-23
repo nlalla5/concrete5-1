@@ -89,22 +89,29 @@ $db = Loader::db();
             <tbody>
 
             <?php
+            $now = Core::make('date')->getOverridableNow();
             foreach ($surveys as $qsid => $survey) {
                 $block = Block::getByID(intval($survey['bID'], 10));
                 if (!is_object($block)) {
                     continue;
                 }
                 $in_use = (int)$db->getOne(
-                    'SELECT count(*)
-                                FROM CollectionVersionBlocks
-                                INNER JOIN Pages
-                                ON CollectionVersionBlocks.cID = Pages.cID
-                                INNER JOIN CollectionVersions
-                                ON CollectionVersions.cID = Pages.cID
-                                WHERE CollectionVersions.cvIsApproved = 1
-                                AND CollectionVersionBlocks.cvID = CollectionVersions.cvID
-                                AND CollectionVersionBlocks.bID = ?',
-                    array($block->bID));
+                    <<<'EOT'
+SELECT
+    count(*)
+FROM
+    CollectionVersionBlocks
+    INNER JOIN Pages
+        ON CollectionVersionBlocks.cID = Pages.cID
+    INNER JOIN CollectionVersions
+        ON CollectionVersions.cID = Pages.cID
+WHERE
+    CollectionVersions.cvIsApproved = 1 AND (CollectionVersions.cvPublishDate IS NULL OR CollectionVersions.cvPublishDate <= ?) AND (CollectionVersions.cvPublishEndDate IS NULL OR CollectionVersions.cvPublishEndDate >= ?)
+    AND CollectionVersionBlocks.cvID = CollectionVersions.cvID
+    AND CollectionVersionBlocks.bID = ?
+EOT
+                    ,
+                    [$now, $now, $block->bID]);
                 $url = $nh->getLinkToCollection($block->getBlockCollectionObject());
                 ?>
                 <tr>
@@ -156,11 +163,7 @@ $db = Loader::db();
         $formPage = $block->getBlockCollectionObject();}
 
     ?>
-    <?php echo $h->getDashboardPaneHeaderWrapper(
-        t('Responses to %s', $surveys[$questionSet]['surveyName']),
-        false,
-        false,
-        false); ?>
+
 <div class="ccm-pane-body <?php if (!$paginator || !strlen($paginator->getPages()) > 0) { ?> ccm-pane-body-footer <?php } ?>">
     <?php if (count($answerSets) == 0) { ?>
         <div><?php echo t('No one has yet submitted this form.') ?></div>
@@ -276,5 +279,4 @@ $db = Loader::db();
             </div>
         <?php } ?>
     <?php } ?>
-    <?php echo $h->getDashboardPaneFooterWrapper(false); ?>
 <?php } ?>

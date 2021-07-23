@@ -11,7 +11,7 @@ use Concrete\TestHelpers\User\UserTestCase;
 
 class GroupTest extends UserTestCase
 {
-    protected function setUp()
+    public function setUp(): void
     {
         $this->truncateTables();
         parent::setUp();
@@ -94,6 +94,7 @@ class GroupTest extends UserTestCase
         $group1 = Group::add('HGroup', 'This is a test group 1');
         $group2 = Group::add('Group 1', 'This is a test group 2', $group1);
         $group3 = Group::add('Approvers', 'This is a test group 1', $group2);
+        $group4 = Group::add('Group 10', 'This is a test group 10', $group1);
 
         $newPath = $group3->getGroupPath();
         $this->assertEquals('/HGroup/Group 1/Approvers', $newPath);
@@ -149,11 +150,13 @@ class GroupTest extends UserTestCase
         $this->assertTrue($userA->inGroup($group3));
         $this->assertTrue($userA->inGroup($group2));
         $this->assertTrue($userA->inGroup($group1));
+        $this->assertFalse($userA->inGroup($group4));
         $userB = $userB->getUserObject();
 
         $this->assertFalse($userB->inGroup($group3));
         $this->assertTrue($userB->inGroup($group2));
         $this->assertTrue($userB->inGroup($group1));
+        $this->assertFalse($userB->inGroup($group4));
     }
 
     public function testInMultipleGroups()
@@ -161,6 +164,7 @@ class GroupTest extends UserTestCase
         $groupA = Group::add('Group A', 'This is a test group A');
         $groupB = Group::add('Group B', 'This is a test group B');
         $groupC = Group::add('Group C', 'This is a test group C');
+        $groupD = Group::add('Group D', 'This is a test group D - Child of C', $groupC);
 
         $users = [
             ['zxcvz1231', 'andrew@concrete5.org'],
@@ -211,5 +215,84 @@ class GroupTest extends UserTestCase
         $list3->filterByGroup($groupB, false);
         $results = $list3->getResults();
         $this->assertEquals(3, count($results));
+
+        // Check for child groups as well
+        $user = \UserInfo::getByName('zxsdfer');
+        $user = $user->getUserObject();
+        $user->enterGroup($groupD);
+
+
+        $user = \UserInfo::getByName('zxcvz1231');
+        $user = $user->getUserObject();
+        $user->enterGroup($groupC);
+        $user->exitGroup($groupA);
+
+        $list4 = new UserList();
+        $list4->filterByInAnyGroup([$groupC], false);
+        $results = $list4->getResults();
+        $this->assertEquals(7, count($results));
+
+
+        $list5 = new UserList();
+        $list5->filterByInAnyGroup([$groupC, $groupA], false);
+        $results = $list5->getResults();
+        $this->assertEquals(5, count($results));
+
+
+        $list6 = new UserList();
+        $list6->filterByInAnyGroup([$groupB, $groupA], true);
+        $results = $list6->getResults();
+        $this->assertEquals(8, count($results));
+    }
+
+    public function testParentChildGroups()
+    {
+
+        $group1 = Group::add('User Group', 'This is a parent test group 1');
+        $group2 = Group::add('User Group Child', 'This is a child test group 1', $group1);
+        $group3 = Group::add('User Group Child 2', 'This is a child test group 2', $group1);
+
+        $fui1 = $this->createUser('groupuser1', 'groupuser1@concrete5.org');
+        $fui2 = $this->createUser('groupuser2', 'groupuser2@concrete5.org');
+        $fui3 = $this->createUser('groupuser3', 'groupuser3@concrete5.org');
+        $fui4 = $this->createUser('groupuser4', 'groupuser4@concrete5.org');
+        $fuu1 = $fui1->getUserObject();
+        $fuu1->enterGroup($group3);
+        $fuu2 = $fui2->getUserObject();
+        $fuu2->enterGroup($group1);
+        $fuu3 = $fui3->getUserObject();
+        $fuu3->enterGroup($group2);
+        $fuu4 = $fui4->getUserObject();
+        $fuu4->enterGroup($group3);
+        $fuu4->enterGroup($group1);
+
+        //Check they aren exclusively in group 1
+        $this->assertFalse($fuu1->inExactGroup($group1));
+        // Check they are a member of group 1
+        $this->assertTrue($fuu1->inGroup($group1));
+        // Check they are not a member of similar group path
+        $this->assertFalse($fuu1->inGroup($group2));
+
+        $this->assertTrue($fuu2->inExactGroup($group1));
+        // Check they are a member of group 1
+        $this->assertTrue($fuu2->inGroup($group1));
+        // Check they are not a member of any children
+        $this->assertFalse($fuu2->inGroup($group2));
+        $this->assertFalse($fuu3->inGroup($group3));
+
+        // Check they are a member of group 1 from child only
+        $this->assertFalse($fuu3->inExactGroup($group1));
+        $this->assertTrue($fuu3->inGroup($group1));
+        // Check they are not a member of any children
+        $this->assertTrue($fuu3->inGroup($group2));
+        $this->assertFalse($fuu3->inGroup($group3));
+
+        // Check they are a member of group 1
+        $this->assertTrue($fuu4->inExactGroup($group1));
+        $this->assertTrue($fuu4->inGroup($group1));
+        // Check they are not a member of any children
+        $this->assertFalse($fuu4->inGroup($group2));
+        $this->assertTrue($fuu4->inGroup($group3));
+
     }
 }
